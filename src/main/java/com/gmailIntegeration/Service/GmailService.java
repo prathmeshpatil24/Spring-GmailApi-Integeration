@@ -11,6 +11,7 @@ import com.google.api.services.gmail.model.*;
 import org.springframework.stereotype.Service;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.security.GeneralSecurityException;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Collections;
@@ -19,86 +20,116 @@ import java.util.List;
 @Service
 public class GmailService {
 
-
     private final GmailConfig1 gmailConfig;
-
 
     public GmailService(GmailConfig1 gmailConfig) {
         this.gmailConfig = gmailConfig;
     }
 
     private Gmail getGmail(String userEmail) throws Exception {
-        Credential credential = gmailConfig.getStoredCredential(userEmail);
-        if (credential == null) {
-            throw new IllegalStateException("⚠ No credential found for user: " + userEmail);
-        }
+        try{
+            Credential credential = gmailConfig.getStoredCredential(userEmail);
+            if (credential == null) {
+                String authorizationUrl= gmailConfig.getAuthorizationUrl();
+                throw new IllegalStateException("No credential found for user: " + userEmail +
+                        ". Please authenticate using the following URL: " +
+                        authorizationUrl);
+            }
 
-        return new Gmail.Builder(
-                GoogleNetHttpTransport.newTrustedTransport(),
-                GsonFactory.getDefaultInstance(),
-                credential
-        ).setApplicationName("Gmail API Spring Boot").build();
+            return new Gmail.Builder(
+                    GoogleNetHttpTransport.newTrustedTransport(),
+                    GsonFactory.getDefaultInstance(),
+                    credential
+            ).setApplicationName("Gmail API Spring Boot").build();
+
+        }catch (IOException e) {
+            throw new IOException("Failed to load Gmail credentials: " + e.getMessage(), e);
+        } catch (GeneralSecurityException e) {
+            throw new GeneralSecurityException("Security error initializing Gmail service: " + e.getMessage(), e);
+        } catch (Exception e) {
+            throw new Exception("Unexpected error creating Gmail instance: " + e.getMessage(), e);
+        }
     }
 
     public List<String> getInboxEmails(String userEmail) throws Exception {
-        Gmail gmailService = getGmail(userEmail);
-        List<String> emailList = new ArrayList<>();
 
-        ListMessagesResponse response = gmailService.users().messages()
-                .list("me")
-                .setLabelIds(Collections.singletonList("INBOX"))
-                .setMaxResults(10L)
-                .execute();
+        try {
+            Gmail gmailService = getGmail(userEmail);
+            List<String> emailList = new ArrayList<>();
 
-        List<Message> messages = response.getMessages();
-        if (messages == null || messages.isEmpty()) {
-            emailList.add("No emails found in inbox.");
-            return emailList;
-        }
-
-        for (Message msg : messages) {
-            String messageId = msg.getId();  // ✅ this is your unique ID
-            Message message = gmailService.users()
-                    .messages()
-                    .get("me", msg.getId())
-                    .setFormat("metadata")
+            ListMessagesResponse response = gmailService.users().messages()
+                    .list("me")
+                    .setLabelIds(Collections.singletonList("INBOX"))
+                    .setMaxResults(10L)
                     .execute();
 
-            String subject = "", from = "";
-            for (MessagePartHeader header : message.getPayload().getHeaders()) {
-                if ("Subject".equalsIgnoreCase(header.getName())) subject = header.getValue();
-                else if ("From".equalsIgnoreCase(header.getName())) from = header.getValue();
+            System.out.println(response.getNextPageToken());
+
+            List<Message> messages = response.getMessages();
+
+            if (messages == null || messages.isEmpty()) {
+                emailList.add("No emails found in inbox.");
+                return emailList;
             }
 
-            emailList.add("📩 From: " + from + " | Subject: " + subject + " | ID: " + messageId);
-        }
+            for (Message msg : messages) {
+                String messageId = msg.getId();  //this is your unique ID
+                Message message = gmailService.users()
+                        .messages()
+                        .get("me", msg.getId())
+                        .setFormat("metadata")
+                        .execute();
 
-        for (String emailInfo : emailList) {
-            System.out.println(emailInfo);
-        }
+                String subject = "", from = "";
+                for (MessagePartHeader header : message.getPayload().getHeaders()) {
+                    if ("Subject".equalsIgnoreCase(header.getName())) subject = header.getValue();
+                    else if ("From".equalsIgnoreCase(header.getName())) from = header.getValue();
+                }
 
-        return emailList;
+                emailList.add("📩 From: " + from + " | Subject: " + subject + " | ID: " + messageId);
+            }
+
+            for (String emailInfo : emailList) {
+                System.out.println(emailInfo);
+            }
+
+            return emailList;
+
+        } catch (Exception e) {
+            throw new RuntimeException(e.getMessage());
+        }
     }
 
     public void sendEmail(String userEmail, String toEmail, String subject, String bodyText) throws Exception {
-        Gmail gmailService = getGmail(userEmail);
 
-        String rawEmail = "From: " + userEmail + "\r\n" +
-                "To: " + toEmail + "\r\n" +
-                "Subject: " + subject + "\r\n" +
-                "Content-Type: text/plain; charset=utf-8\r\n\r\n" +
-                bodyText;
+       try {
+           Gmail gmailService = getGmail(userEmail);
 
-        Message message = new Message();
-        message.setRaw(Base64.getUrlEncoder()
-                .encodeToString(rawEmail.getBytes(StandardCharsets.UTF_8)));
+           String rawEmail = "From: " + userEmail + "\r\n" +
+                   "To: " + toEmail + "\r\n" +
+                   "Subject: " + subject + "\r\n" +
+                   "Content-Type: text/plain; charset=utf-8\r\n\r\n" +
+                   bodyText;
 
-        gmailService.users().messages().send("me", message).execute();
+           Message message = new Message();
+
+           message.setRaw(Base64.getUrlEncoder()
+                   .encodeToString(rawEmail.getBytes(StandardCharsets.UTF_8)));
+
+           gmailService.users().messages().send("me", message).execute();
+       } catch (Exception e) {
+           throw new RuntimeException(e);
+       }
     }
 
     public void deleteEmail(String userEmail, String messageId) throws Exception {
-        Gmail gmailService = getGmail(userEmail);
-        gmailService.users().messages().delete("me", messageId).execute();
+        try {
+            Gmail gmailService = getGmail(userEmail);
+            gmailService.users().messages().delete("me", messageId).execute();
+
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 
     private String extractBodyFromMessage(Message message) throws IOException {
@@ -124,44 +155,51 @@ public class GmailService {
     }
 
 
-
     public String readEmailBody(String userEmail, String messageId) throws Exception {
-        Gmail gmailService = getGmail(userEmail);
+      try {
+          Gmail gmailService = getGmail(userEmail);
 
-        // Fetch full message details
-        Message message = gmailService.users().messages()
-                .get("me", messageId)
-                .setFormat("full")
-                .execute();
+          // Fetch full message details
+          Message message = gmailService.users().messages()
+                  .get("me", messageId)
+                  .setFormat("full")
+                  .execute();
 
-        // Extract body content
-        String body = extractBodyFromMessage(message);
-        String subject = "", from = "";
+          // Extract body content
+          String body = extractBodyFromMessage(message);
+          String subject = "", from = "";
 
-        for (MessagePartHeader header : message.getPayload().getHeaders()) {
-            if ("Subject".equalsIgnoreCase(header.getName())) subject = header.getValue();
-            else if ("From".equalsIgnoreCase(header.getName())) from = header.getValue();
-        }
+          for (MessagePartHeader header : message.getPayload().getHeaders()) {
+              if ("Subject".equalsIgnoreCase(header.getName())) subject = header.getValue();
+              else if ("From".equalsIgnoreCase(header.getName())) from = header.getValue();
+          }
 
-        System.out.println("📧 From: " + from);
-        System.out.println("📝 Subject: " + subject);
-        System.out.println("📨 Body:\n" + body);
+          System.out.println("📧 From: " + from);
+          System.out.println("📝 Subject: " + subject);
+          System.out.println("📨 Body:\n" + body);
 
-        return body;
+          return body;
+      } catch (Exception e) {
+          throw new RuntimeException(e);
+      }
     }
 
 
     public List<String> listLabels(String userEmail) throws Exception {
-        Gmail gmailService = getGmail(userEmail);
+        try {
+            Gmail gmailService = getGmail(userEmail);
 
-        ListLabelsResponse response = gmailService.users().labels().list("me").execute();
-        List<String> labelNames = new ArrayList<>();
+            ListLabelsResponse response = gmailService.users().labels().list("me").execute();
+            List<String> labelNames = new ArrayList<>();
 
-        for (Label label : response.getLabels()) {
-            labelNames.add(label.getName());
+            for (Label label : response.getLabels()) {
+                labelNames.add(label.getName());
+            }
+
+            return labelNames;
+        } catch (Exception e) {
+            throw new RuntimeException(e);
         }
-
-        return labelNames;
     }
 
     private String decodeBase64(String encoded) {

@@ -2,6 +2,7 @@ package com.gmailIntegeration.Configuration;
 
 import com.gmailIntegeration.Repo.GmailTokenRepository;
 import com.gmailIntegeration.Utils.JpaDataStoreFactory;
+
 import com.google.api.client.auth.oauth2.BearerToken;
 import com.google.api.client.auth.oauth2.ClientParametersAuthentication;
 import com.google.api.client.auth.oauth2.Credential;
@@ -19,7 +20,9 @@ import org.springframework.context.annotation.Configuration;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStreamReader;
+
 import java.security.GeneralSecurityException;
+
 import java.util.Arrays;
 import java.util.List;
 
@@ -207,8 +210,6 @@ public class GmailConfig1 {
             throw new RuntimeException("Failed to retrieved stored credential: " + ex.getMessage(), ex);
         }
     }
-
-
 
     //4 — Get Gmail service dynamically (no bean)
     public Gmail createNewGmailCredentials() throws Exception {

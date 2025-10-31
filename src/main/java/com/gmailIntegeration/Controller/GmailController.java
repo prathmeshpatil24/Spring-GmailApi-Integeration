@@ -1,13 +1,12 @@
 package com.gmailIntegeration.Controller;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+
 import com.gmailIntegeration.Service.GmailService;
 import com.gmailIntegeration.Utils.JsonOrTextConversion;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
 
 @RestController
 @RequestMapping("/api/gmail")

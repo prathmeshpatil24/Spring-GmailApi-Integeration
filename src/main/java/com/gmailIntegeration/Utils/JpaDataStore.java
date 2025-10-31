@@ -10,10 +10,11 @@ import com.google.api.client.util.store.DataStoreFactory;
 import java.io.IOException;
 import java.time.Instant;
 import java.util.Collection;
-import java.util.List;
+
 import java.util.Set;
 import java.util.stream.Collectors;
 
+//for storing tokens in JPA repository
 public class JpaDataStore extends AbstractDataStore<StoredCredential> {
 
     private final GmailTokenRepository repository;
@@ -84,3 +85,9 @@ public class JpaDataStore extends AbstractDataStore<StoredCredential> {
         return credential;
     }
 }
+
+//com.google.api.client.util.store.AbstractDataStore
+//t’s a generic class — meaning you can store any type of object (like StoredCredential, or even something else if you wanted).
+//A standard interface for saving and loading data (OAuth tokens, credentials, etc.)
+//Thread-safe and consistent behavior across different storage types (file, memory, DB)
+//A pluggable mechanism — so developers can choose where credentials live

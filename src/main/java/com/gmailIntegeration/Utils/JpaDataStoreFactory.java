@@ -16,7 +16,13 @@ public class JpaDataStoreFactory implements DataStoreFactory {
     }
 
     @Override
+    //This method is called automatically by Google’s OAuth library when it needs to create or access a data store (a place to save credentials like tokens).
+    //method can handle any kind of serializable data type
     public <V extends Serializable> DataStore<V> getDataStore(String s) throws IOException {
         return (DataStore<V>)new JpaDataStore(this,s,repository);
     }
 }
+
+//DataStoreFactory is an interface that defines how to create a DataStore.
+//Google’s client library uses it to decide where tokens are stored — file, memory, database, etc.
+//A factory that produces the actual storage mechanism for credentials

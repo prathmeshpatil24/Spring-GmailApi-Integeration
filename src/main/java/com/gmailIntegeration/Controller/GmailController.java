@@ -7,6 +7,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 
 @RestController
 @RequestMapping("/api/gmail")
@@ -25,6 +27,22 @@ public class GmailController {
         return ResponseEntity.ok(gmailService.getInboxEmails(email));
     }
 
+    @GetMapping("/inbox/{userEmail}/{messageId}")
+    public ResponseEntity<?> readEmailBody(
+            @PathVariable String userEmail,
+            @PathVariable String messageId
+    ) {
+        try {
+            String body = gmailService.readEmailBody(userEmail, messageId);
+
+            return ResponseEntity.ok(body);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Failed to read email: " + e.getMessage());
+        }
+    }
+
     @PostMapping("/send/{email}")
     public String send(@PathVariable String email,
                        @RequestParam String to,
@@ -39,27 +57,27 @@ public class GmailController {
         }
     }
 
-    @GetMapping("/read-email/{userEmail}/{messageId}")
-    public ResponseEntity<?> readEmailBody(
-            @PathVariable String userEmail,
-            @PathVariable String messageId
-    ) {
-        try {
-            String body = gmailService.readEmailBody(userEmail, messageId);
 
-            return ResponseEntity.ok(body);
-        } catch (Exception e) {
-            e.printStackTrace();
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("❌ Failed to read email: " + e.getMessage());
-        }
-    }
 
 
     @DeleteMapping("/delete/{email}/{messageId}")
-    public String delete(@PathVariable String email, @PathVariable String messageId) throws Exception {
+    public String delete(@PathVariable String email,
+                         @PathVariable String messageId)
+            throws Exception {
         gmailService.deleteEmail(email, messageId);
-        return "🗑️ Email deleted successfully!";
+        return "Email deleted successfully!";
+    }
+
+
+    @GetMapping("/sent/{email}")
+    public ResponseEntity<?> sentItems(@PathVariable String email) throws Exception {
+        try {
+            List<String> sentEmails = gmailService.sentEmails(email);
+
+            return ResponseEntity.ok(sentEmails);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 }
 

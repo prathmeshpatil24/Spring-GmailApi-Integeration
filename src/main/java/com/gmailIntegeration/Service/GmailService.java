@@ -15,10 +15,7 @@ import java.nio.charset.StandardCharsets;
 
 import java.security.GeneralSecurityException;
 
-import java.util.ArrayList;
-import java.util.Base64;
-import java.util.Collections;
-import java.util.List;
+import java.util.*;
 
 @Service
 public class GmailService {
@@ -54,6 +51,45 @@ public class GmailService {
         }
     }
 
+
+    public List<String>sentEmails(String userEmail) throws Exception{
+        Gmail gmail = getGmail(userEmail);
+
+        try {
+            ListMessagesResponse listOfSentEmails = gmail.users().messages().list("me").setLabelIds(Arrays.asList("SENT")).execute();
+            List<String> sentEmailList = new ArrayList<>();
+
+            if (listOfSentEmails == null || listOfSentEmails.isEmpty()){
+                sentEmailList.add("No emails found in inbox.");
+                return sentEmailList;
+            }
+
+            for (Message message : listOfSentEmails.getMessages()) {
+                String messageId = message.getId();
+                Message fullMessage = gmail.users().messages().get("me", messageId).setFormat("metadata").execute();
+
+                String subject = "", to = "", dateTime = "";
+
+                for (MessagePartHeader header : fullMessage.getPayload().getHeaders()) {
+                    if ("Subject".equalsIgnoreCase(header.getName())) {
+                        subject = header.getValue();
+                    } else if ("To".equalsIgnoreCase(header.getName())) {
+                        to = header.getValue();
+                    } else if ("Date".equalsIgnoreCase(header.getName())) {
+                        dateTime = header.getValue();
+                    }
+                }
+                sentEmailList.add("ID: " + messageId + "| 📩 To: " + to + " | Subject: " + subject + "| Date: " + dateTime);
+            }
+            for (String sentEmailInfo : sentEmailList) {
+                System.out.println(sentEmailInfo);
+            }
+            return sentEmailList;
+        }catch (Exception ex){
+            throw new RuntimeException(ex.getMessage());
+        }
+    }
+
     //listing inbox emails
     public List<String> getInboxEmails(String userEmail) throws Exception {
 
@@ -65,8 +101,13 @@ public class GmailService {
             ListMessagesResponse response = gmailService.users()
                     .messages()
                     .list("me")
-                    .setLabelIds(Collections.singletonList("INBOX"))
-                    .setMaxResults(10L)
+                    .setLabelIds(Arrays.asList(
+                            "INBOX",
+                            "CATEGORY_PERSONAL"
+                    ))
+                    .setIncludeSpamTrash(false)
+                    .setPrettyPrint(true)
+                    .setMaxResults(50L)
                     .execute();
 
             //System.out.println(response.getNextPageToken());// for pagination
@@ -86,19 +127,21 @@ public class GmailService {
                         .setFormat("metadata")
                         .execute();
 
-                String subject = "", from = "";
+                String subject = "", from = "", dateTime = "";
 
                 //Iterates through all message headers and extracts specific ones
                 for (MessagePartHeader header : message.getPayload().getHeaders()) {
 
-                    //header.getName() gives the key like Subject, From, To, Date, etc.
+                    //header.getName() gives the key like Subject, From, To, Date,  etc.
                     if ("Subject".equalsIgnoreCase(header.getName())){
                         subject = header.getValue();// gets the value of the header
                     } else if ("From".equalsIgnoreCase(header.getName())){
                         from = header.getValue();
+                    } else if ("Date".equalsIgnoreCase(header.getName())) {
+                        dateTime = header.getValue();
                     }
                 }
-                emailList.add("📩 From: " + from + " | Subject: " + subject + " | ID: " + messageId);// for testing purpose
+                emailList.add("ID: " + messageId + "| 📩 From: " + from + " | Subject: " + subject + "| Date: " + dateTime );// for testing purpose
             }
             for (String emailInfo : emailList) {
                 System.out.println(emailInfo);

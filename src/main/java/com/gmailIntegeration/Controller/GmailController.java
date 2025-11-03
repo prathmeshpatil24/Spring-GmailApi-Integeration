@@ -116,7 +116,7 @@ public class GmailController {
     }
 
 
-    @GetMapping("/draft/{emails}")
+    @GetMapping("/draft/{email}")
     public ResponseEntity<?> listOfDraftEmail(@PathVariable String email) {
         try {
             List<String> strings = gmailService.draftEmailsList(email);
@@ -145,10 +145,10 @@ public class GmailController {
         }
     }
 
-    @GetMapping("/spam/{userEmail}")
-    public ResponseEntity<?> listOfSpam(@PathVariable String userEmail) {
+    @GetMapping("/spam/{email}")
+    public ResponseEntity<?> listOfSpam(@PathVariable String email) {
         try {
-            List<String> draftEmailsList = gmailService.draftEmailsList(userEmail);
+            List<String> draftEmailsList = gmailService.draftEmailsList(email);
 
             return ResponseEntity.ok(draftEmailsList);
         } catch (Exception ex) {
@@ -160,12 +160,12 @@ public class GmailController {
 
     @GetMapping("/spam/{userEmail}/{messageId}")
     public ResponseEntity<?> readSpamEmail(
-            @PathVariable String userEmail,
+            @PathVariable String email,
             @PathVariable String messageId,
             @PathVariable(required = false) boolean isDraft
     ) {
         try {
-            String spamEmailBody = gmailService.readAnyEmailBody(userEmail, messageId, isDraft);
+            String spamEmailBody = gmailService.readAnyEmailBody(email, messageId, isDraft);
             return ResponseEntity.ok(spamEmailBody);
         } catch (Exception e) {
             e.printStackTrace();
@@ -174,11 +174,11 @@ public class GmailController {
         }
     }
 
-    @GetMapping("/moveToTrash/{userEmail/messageId}")
-    public ResponseEntity<?> moveToTrashEmail(@PathVariable String userEmail,
+    @GetMapping("/moveToTrash/{email}/messageId}")
+    public ResponseEntity<?> moveToTrashEmail(@PathVariable String email,
                                               @PathVariable String messageId) {
         try {
-            gmailService.moveEmailToTrash(userEmail, messageId);
+            gmailService.moveEmailToTrash(email, messageId);
             return ResponseEntity.ok("Email moved to Trash successfully!");
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
@@ -186,11 +186,11 @@ public class GmailController {
         }
     }
 
-    @GetMapping("/unTrashEmail/{userEmail/messageId}")
-    public ResponseEntity<?> unTrashEmail(@PathVariable String userEmail,
+    @GetMapping("/unTrashEmail/{email}/messageId}")
+    public ResponseEntity<?> unTrashEmail(@PathVariable String email,
                                               @PathVariable String messageId) {
         try {
-            gmailService.unTrashEmail(userEmail,messageId);
+            gmailService.unTrashEmail(email,messageId);
             return ResponseEntity.ok("Email moved from Trash successfully!");
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)

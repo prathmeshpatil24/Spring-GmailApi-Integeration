@@ -2,7 +2,6 @@ package com.gmailIntegeration.Controller;
 
 
 import com.gmailIntegeration.Service.GmailService;
-import com.gmailIntegeration.Utils.JsonOrTextConversion;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -17,12 +16,8 @@ public class GmailController {
     private final GmailService gmailService;
 //    private final JsonOrTextConversion jsonOrTextConversion;
 
-    public GmailController(GmailService gmailService
-//                           JsonOrTextConversion jsonOrTextConversion
-    ) {
-        this.gmailService = gmailService;
-//        this.jsonOrTextConversion = jsonOrTextConversion;
-    }
+    public GmailController(GmailService gmailService) {
+        this.gmailService = gmailService;}
 
     @GetMapping("/inbox/{email}")
     public ResponseEntity<?> inbox(@PathVariable String email) throws Exception {

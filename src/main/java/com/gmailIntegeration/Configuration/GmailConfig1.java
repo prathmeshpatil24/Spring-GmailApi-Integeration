@@ -29,7 +29,7 @@ import java.util.List;
 @Configuration
 public class GmailConfig1 {
 
-//    wired-sol-476704-h8
+//
 
     public static final String APPLICATION_NAME = "Gmail API Spring Boot";
     public static final JsonFactory JSON_FACTORY = GsonFactory.getDefaultInstance();

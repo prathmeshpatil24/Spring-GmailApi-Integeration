@@ -5,6 +5,7 @@ import com.gmailIntegeration.Service.GmailService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -18,6 +19,16 @@ public class GmailController {
 
     public GmailController(GmailService gmailService) {
         this.gmailService = gmailService;}
+
+    @GetMapping("/labels/{email}")
+    public ResponseEntity<?> getLabels(@PathVariable String email) {
+            try {
+                List<String> labels = gmailService.listLabels(email);
+                return ResponseEntity.ok(labels);
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+    }
 
     @GetMapping("/inbox/{email}")
     public ResponseEntity<?> inbox(@PathVariable String email) throws Exception {
@@ -87,10 +98,28 @@ public class GmailController {
         }
     }
 
+    @PostMapping("/send-email")
+    public ResponseEntity<?> sendEmail(
+            @RequestParam String userEmail,
+            @RequestParam String toEmail,
+            @RequestParam String subject,
+            @RequestParam String bodyText,
+            @RequestParam(required = false) MultipartFile attachmentFile) {
+
+        try {
+            gmailService.sendEmailWithAttachment(userEmail, toEmail, subject, bodyText, attachmentFile);
+            return ResponseEntity.ok("Email sent successfully!");
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Failed to send email: " + e.getMessage());
+        }
+    }
+
+
     @GetMapping("/sent/{email}")
     public ResponseEntity<?> sentItems(@PathVariable String email) throws Exception {
         try {
-            List<String> sentEmails = gmailService.sentEmails(email);
+            List<String> sentEmails = gmailService.sentEmailList(email);
 
             return ResponseEntity.ok(sentEmails);
         } catch (Exception e) {

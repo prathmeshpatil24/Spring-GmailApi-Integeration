@@ -8,8 +8,15 @@ import com.google.api.client.json.gson.GsonFactory;
 import com.google.api.services.gmail.Gmail;
 import com.google.api.services.gmail.model.*;
 
+import jakarta.activation.DataHandler;
+import jakarta.activation.DataSource;
+import jakarta.mail.Session;
+import jakarta.mail.internet.*;
+import jakarta.mail.util.ByteArrayDataSource;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 
@@ -61,8 +68,8 @@ public class GmailService {
 
             for (Label label : response.getLabels()) {
                 labelNames.add(label.getName());
+                System.out.println("---------------");
             }
-
             return labelNames;
         } catch (Exception e) {
             throw new RuntimeException(e);
@@ -70,7 +77,7 @@ public class GmailService {
     }
 
     //listing sent emails
-    public List<String>sentEmails(String userEmail) throws Exception{
+    public List<String>sentEmailList(String userEmail) throws Exception{
         Gmail gmail = getGmail(userEmail);
 
         try {
@@ -287,6 +294,87 @@ public class GmailService {
                    .encodeToString(rawEmail.getBytes(StandardCharsets.UTF_8)));
 
            gmail.users().messages().send("me", message).execute();//actual API call that sends our email through Gmail’s servers.
+       } catch (Exception e) {
+           throw new RuntimeException(e);
+       }
+    }
+
+    public void sendEmailWithAttachment(String userEmail,
+                                        String toEmail,
+                                        String subject,
+                                        String bodyText,
+                                        MultipartFile attachmentFile) throws Exception {
+
+        Gmail gmail = getGmail(userEmail);
+
+       try {
+           Properties props = new Properties();
+           Session session = Session.getDefaultInstance(props, null);
+
+           MimeMessage email = new MimeMessage(session);
+           email.setFrom(new InternetAddress(userEmail));
+           email.addRecipient(jakarta.mail.Message.RecipientType.TO, new InternetAddress(toEmail));
+
+//           // Optional: add CC recipients
+//           if (ccEmail != null && !ccEmail.isEmpty()) {
+//               email.addRecipient(jakarta.mail.Message.RecipientType.CC, new InternetAddress(ccEmail));
+//           }
+//
+//           // Optional: add BCC recipients
+//           if (bccEmail != null && !bccEmail.isEmpty()) {
+//               email.addRecipient(jakarta.mail.Message.RecipientType.BCC, new InternetAddress(bccEmail));
+//           }
+
+           email.setSubject(subject, "UTF-8");
+
+           MimeBodyPart textPart = new MimeBodyPart();
+           textPart.setText(bodyText, "UTF-8");
+
+           MimeMultipart multipart = new MimeMultipart();
+           multipart.addBodyPart(textPart);
+
+           //Handle optional MultipartFile safely
+           if (attachmentFile != null && !attachmentFile.isEmpty()) {
+               try {
+                   MimeBodyPart attachmentPart = new MimeBodyPart();
+
+                   // You can directly use MultipartFile’s input stream and content type
+                   DataSource source = new ByteArrayDataSource(
+                           attachmentFile.getInputStream(),
+                           attachmentFile.getContentType() != null
+                                   ? attachmentFile.getContentType()
+                                   : "application/octet-stream"
+                   );
+                   attachmentPart.setDataHandler(new DataHandler(source));
+                   attachmentPart.setFileName(
+                           MimeUtility.encodeText(attachmentFile.getOriginalFilename())
+                   );
+                   multipart.addBodyPart(attachmentPart);
+               } catch (Exception e) {
+                   System.err.println("Failed to attach file: " + e.getMessage());
+               }
+           } else {
+               System.out.println("No attachment provided. Sending email without attachment.");
+           }
+
+           email.setContent(multipart);
+
+           ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+           email.writeTo(buffer);
+
+           String encodedEmail = Base64.getUrlEncoder()
+                   .encodeToString(buffer.toByteArray());
+
+           Message message = new Message();
+           message.setRaw(encodedEmail);
+
+           gmail.users().messages().send("me", message).execute();
+
+           System.out.println("Email sent successfully" +
+                   (attachmentFile != null && !attachmentFile.isEmpty()
+                           ? " with attachment: " + attachmentFile.getOriginalFilename()
+                           : " without attachment."));
+
        } catch (Exception e) {
            throw new RuntimeException(e);
        }

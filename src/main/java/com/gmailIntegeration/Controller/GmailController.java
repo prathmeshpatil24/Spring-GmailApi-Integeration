@@ -15,31 +15,66 @@ import java.util.List;
 public class GmailController {
 
     private final GmailService gmailService;
-    private final JsonOrTextConversion jsonOrTextConversion;
+//    private final JsonOrTextConversion jsonOrTextConversion;
 
-    public GmailController(GmailService gmailService, JsonOrTextConversion jsonOrTextConversion) {
+    public GmailController(GmailService gmailService
+//                           JsonOrTextConversion jsonOrTextConversion
+    ) {
         this.gmailService = gmailService;
-        this.jsonOrTextConversion = jsonOrTextConversion;
+//        this.jsonOrTextConversion = jsonOrTextConversion;
     }
 
     @GetMapping("/inbox/{email}")
     public ResponseEntity<?> inbox(@PathVariable String email) throws Exception {
-        return ResponseEntity.ok(gmailService.getInboxEmails(email));
+        try{
+            return ResponseEntity.ok(gmailService.getInboxEmails(email));
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 
-    @GetMapping("/inbox/{userEmail}/{messageId}")
+    @GetMapping("/inbox/{email}/{messageId}")
     public ResponseEntity<?> readEmailBody(
-            @PathVariable String userEmail,
-            @PathVariable String messageId
+            @PathVariable String email,
+            @PathVariable String messageId,
+            @PathVariable(required = false) boolean isDraft
     ) {
         try {
-            String body = gmailService.readEmailBody(userEmail, messageId);
+            String body = gmailService.readAnyEmailBody(email, messageId, isDraft);
 
             return ResponseEntity.ok(body);
         } catch (Exception e) {
             e.printStackTrace();
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body("Failed to read email: " + e.getMessage());
+        }
+    }
+
+
+    @PostMapping("/inbox/{email}/{messageId}/star")
+    public ResponseEntity<?>toggleStarredEmail(
+            @PathVariable String email,
+            @PathVariable String messageId,
+            @RequestParam boolean starStatus
+    ) {
+        try {
+            gmailService.toggleStar(email, messageId, starStatus);
+            return ResponseEntity.ok(
+                    "Email " + (starStatus ? "starred" : "un-starred") + " successfully!"
+            );
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Failed to update star status: " + e.getMessage());
+        }
+    }
+
+    @GetMapping("/starred/{email}")
+    public ResponseEntity<?> listOfStarredEmail(@PathVariable String email){
+        try{
+            List<String> starredEmails = gmailService.getStarredEmails(email);
+            return ResponseEntity.ok(starredEmails);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
         }
     }
 
@@ -51,23 +86,11 @@ public class GmailController {
         try {
             gmailService.sendEmail(email, to, subject, body);
             return ResponseEntity.ok("✅ Email sent successfully! + to: " + to + "from: " + email).getBody();
-        }catch (Exception e) {
+        } catch (Exception e) {
             e.printStackTrace();
             return "❌ Failed to send email: " + e.getMessage();
         }
     }
-
-
-
-
-    @DeleteMapping("/delete/{email}/{messageId}")
-    public String delete(@PathVariable String email,
-                         @PathVariable String messageId)
-            throws Exception {
-        gmailService.deleteEmail(email, messageId);
-        return "Email deleted successfully!";
-    }
-
 
     @GetMapping("/sent/{email}")
     public ResponseEntity<?> sentItems(@PathVariable String email) throws Exception {
@@ -79,6 +102,118 @@ public class GmailController {
             throw new RuntimeException(e);
         }
     }
+
+    @GetMapping("/sent/{email}/{messageId}")
+    public ResponseEntity<?> readSentEmailBody(
+            @PathVariable String email,
+            @PathVariable String messageId,
+            @PathVariable(required = false) boolean isDraft
+    ) {
+        try {
+            String body = gmailService.readAnyEmailBody(email, messageId, isDraft);
+
+            return ResponseEntity.ok(body);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Failed to read sent email: " + e.getMessage());
+        }
+    }
+
+
+    @GetMapping("/draft/{emails}")
+    public ResponseEntity<?> listOfDraftEmail(@PathVariable String email) {
+        try {
+            List<String> strings = gmailService.draftEmailsList(email);
+            return ResponseEntity.ok(strings);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Failed to read draft email: " + e.getMessage());
+        }
+    }
+
+    @GetMapping("/draft/{email}/{messageId}")
+    public ResponseEntity<?> readDraftEmailBody(
+            @PathVariable String email,
+            @PathVariable String messageId,
+            @PathVariable(required = true) boolean isDraft
+    ) {
+        try {
+            String body = gmailService.readAnyEmailBody(email, messageId, isDraft);
+
+            return ResponseEntity.ok(body);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Failed to read sent email: " + e.getMessage());
+        }
+    }
+
+    @GetMapping("/spam/{userEmail}")
+    public ResponseEntity<?> listOfSpam(@PathVariable String userEmail) {
+        try {
+            List<String> draftEmailsList = gmailService.draftEmailsList(userEmail);
+
+            return ResponseEntity.ok(draftEmailsList);
+        } catch (Exception ex) {
+            ex.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Failed to read sent email: " + ex.getMessage());
+        }
+    }
+
+    @GetMapping("/spam/{userEmail}/{messageId}")
+    public ResponseEntity<?> readSpamEmail(
+            @PathVariable String userEmail,
+            @PathVariable String messageId,
+            @PathVariable(required = false) boolean isDraft
+    ) {
+        try {
+            String spamEmailBody = gmailService.readAnyEmailBody(userEmail, messageId, isDraft);
+            return ResponseEntity.ok(spamEmailBody);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Failed to read sent email: " + e.getMessage());
+        }
+    }
+
+    @GetMapping("/moveToTrash/{userEmail/messageId}")
+    public ResponseEntity<?> moveToTrashEmail(@PathVariable String userEmail,
+                                              @PathVariable String messageId) {
+        try {
+            gmailService.moveEmailToTrash(userEmail, messageId);
+            return ResponseEntity.ok("Email moved to Trash successfully!");
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Failed to move email in trash: " + e.getMessage());
+        }
+    }
+
+    @GetMapping("/unTrashEmail/{userEmail/messageId}")
+    public ResponseEntity<?> unTrashEmail(@PathVariable String userEmail,
+                                              @PathVariable String messageId) {
+        try {
+            gmailService.unTrashEmail(userEmail,messageId);
+            return ResponseEntity.ok("Email moved from Trash successfully!");
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Failed to move email from trash: " + e.getMessage());
+        }
+    }
+
+    @DeleteMapping("/delete/{email}/{messageId}")
+    public ResponseEntity<?> delete(@PathVariable String email,
+                                    @PathVariable String messageId) throws Exception {
+        try {
+            gmailService.deleteEmail(email, messageId);
+            return ResponseEntity.ok("Email deleted successfully!");
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
 }
 
 

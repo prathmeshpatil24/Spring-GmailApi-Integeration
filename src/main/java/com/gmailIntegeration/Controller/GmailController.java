@@ -2,14 +2,17 @@ package com.gmailIntegeration.Controller;
 
 
 import com.gmailIntegeration.Service.GmailService;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
+import java.util.Map;
 
 
+@CrossOrigin(origins = "http://localhost:5173")
 @RestController
 @RequestMapping("/api/gmail")
 public class GmailController {
@@ -20,6 +23,16 @@ public class GmailController {
     public GmailController(GmailService gmailService) {
         this.gmailService = gmailService;}
 
+    @GetMapping("/currentUser/{email}")
+    public ResponseEntity<String> getCurrentUser(@PathVariable String email) {
+        try {
+            List<String> currentUserProfile = gmailService.currentUserProfile(email);
+            return ResponseEntity.ok("Logged in as: " + currentUserProfile);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     @GetMapping("/labels/{email}")
     public ResponseEntity<?> getLabels(@PathVariable String email) {
             try {
@@ -28,6 +41,20 @@ public class GmailController {
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
+    }
+
+    @GetMapping("/emails/{label}")
+    public ResponseEntity<?> getEmailsByLabel(
+            @PathVariable String label,
+            @PathVariable String email
+    ) {
+        try {
+            List<Map<String, Object>> emails = gmailService.getEmailsByLabel(email, label);
+            return ResponseEntity.ok(emails);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Failed to fetch emails for label: " + e.getMessage());
+        }
     }
 
     @GetMapping("/inbox/{email}")
@@ -46,9 +73,9 @@ public class GmailController {
             @PathVariable(required = false) boolean isDraft
     ) {
         try {
-            String body = gmailService.readAnyEmailBody(email, messageId, isDraft);
+            Map<String, Object> emailBody = gmailService.readAnyEmailBody(email, messageId, isDraft);
 
-            return ResponseEntity.ok(body);
+            return ResponseEntity.ok(emailBody);
         } catch (Exception e) {
             e.printStackTrace();
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
@@ -91,10 +118,10 @@ public class GmailController {
                        @RequestParam String body) throws Exception {
         try {
             gmailService.sendEmail(email, to, subject, body);
-            return ResponseEntity.ok("✅ Email sent successfully! + to: " + to + "from: " + email).getBody();
+            return ResponseEntity.ok("Email sent successfully! + to: " + to + "from: " + email).getBody();
         } catch (Exception e) {
             e.printStackTrace();
-            return "❌ Failed to send email: " + e.getMessage();
+            return "Failed to send email: " + e.getMessage();
         }
     }
 
@@ -102,6 +129,8 @@ public class GmailController {
     public ResponseEntity<?> sendEmail(
             @RequestParam String userEmail,
             @RequestParam String toEmail,
+//            @RequestParam String CC,
+//            @RequestParam String BCC,
             @RequestParam String subject,
             @RequestParam String bodyText,
             @RequestParam(required = false) MultipartFile attachmentFile) {
@@ -134,9 +163,9 @@ public class GmailController {
             @PathVariable(required = false) boolean isDraft
     ) {
         try {
-            String body = gmailService.readAnyEmailBody(email, messageId, isDraft);
+            Map<String, Object> emailBody = gmailService.readAnyEmailBody(email, messageId, isDraft);
 
-            return ResponseEntity.ok(body);
+            return ResponseEntity.ok(emailBody);
         } catch (Exception e) {
             e.printStackTrace();
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
@@ -164,9 +193,9 @@ public class GmailController {
             @PathVariable(required = true) boolean isDraft
     ) {
         try {
-            String body = gmailService.readAnyEmailBody(email, messageId, isDraft);
+            Map<String, Object> emailBody = gmailService.readAnyEmailBody(email, messageId, isDraft);
 
-            return ResponseEntity.ok(body);
+            return ResponseEntity.ok(emailBody);
         } catch (Exception e) {
             e.printStackTrace();
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
@@ -194,8 +223,8 @@ public class GmailController {
             @PathVariable(required = false) boolean isDraft
     ) {
         try {
-            String spamEmailBody = gmailService.readAnyEmailBody(email, messageId, isDraft);
-            return ResponseEntity.ok(spamEmailBody);
+            Map<String, Object> emailBody = gmailService.readAnyEmailBody(email, messageId, isDraft);
+            return ResponseEntity.ok(emailBody);
         } catch (Exception e) {
             e.printStackTrace();
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
@@ -203,7 +232,7 @@ public class GmailController {
         }
     }
 
-    @GetMapping("/moveToTrash/{email}/messageId}")
+    @GetMapping("/moveToTrash/{email}/{messageId}")
     public ResponseEntity<?> moveToTrashEmail(@PathVariable String email,
                                               @PathVariable String messageId) {
         try {
@@ -215,7 +244,7 @@ public class GmailController {
         }
     }
 
-    @GetMapping("/unTrashEmail/{email}/messageId}")
+    @GetMapping("/unTrashEmail/{email}/{messageId}")
     public ResponseEntity<?> unTrashEmail(@PathVariable String email,
                                               @PathVariable String messageId) {
         try {

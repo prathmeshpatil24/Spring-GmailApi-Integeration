@@ -58,6 +58,29 @@ public class GmailService {
         }
     }
 
+    public List<String> currentUserProfile(String userEmail) throws Exception {
+        Gmail gmail = getGmail(userEmail);
+
+        try {
+            Profile profile = gmail.users().getProfile("me").execute();
+
+            ArrayList<String> profileList = new ArrayList<>();
+            System.out.println("User Email: " + profile.getEmailAddress());
+            System.out.println("Messages Total: " + profile.getMessagesTotal());
+            System.out.println("Threads Total: " + profile.getThreadsTotal());
+//            Map<String, Object> profile = new HashMap<>();// for dynamic key-value pairs
+            for (Map.Entry<String, Object> entry : profile.entrySet()) {
+                String key = entry.getKey();
+                Object value = entry.getValue();
+                profileList.add(key + ": " + value);
+            }
+            return profileList;
+
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to fetch user profile: " + e.getMessage(), e);
+        }
+    }
+
     //listing all labels in Gmail account
     public List<String> listLabels(String userEmail) throws Exception {
         try {
@@ -68,6 +91,7 @@ public class GmailService {
 
             for (Label label : response.getLabels()) {
                 labelNames.add(label.getName());
+                System.out.println("Label Name: " + label.getName() + " | ID: " + label.getId());
                 System.out.println("---------------");
             }
             return labelNames;
@@ -76,44 +100,67 @@ public class GmailService {
         }
     }
 
-    //listing sent emails
-    public List<String>sentEmailList(String userEmail) throws Exception{
+    //listing emails by label
+    public List<Map<String, Object>> getEmailsByLabel(String userEmail, String label) throws Exception {
         Gmail gmail = getGmail(userEmail);
+        List<Map<String, Object>> emailsList = new ArrayList<>();
 
         try {
-            ListMessagesResponse listOfSentEmails = gmail.users().messages().list("me").setLabelIds(Arrays.asList("SENT")).execute();
-            List<String> sentEmailList = new ArrayList<>();
+            ListMessagesResponse response = gmail.users().messages()
+                    .list("me")
+                    .setLabelIds(Collections.singletonList(label))
+                    .setMaxResults(50L)
+                    .execute();
 
-            if (listOfSentEmails == null || listOfSentEmails.isEmpty()){
-                sentEmailList.add("No emails found in inbox.");
-                return sentEmailList;
+            List<Message> messages = response.getMessages();
+
+            if (messages == null || messages.isEmpty()) {
+                System.out.println("No emails found with label: " + label);
+                return Collections.emptyList();
             }
 
-            for (Message message : listOfSentEmails.getMessages()) {
-                String messageId = message.getId();
-                Message fullMessage = gmail.users().messages().get("me", messageId).setFormat("metadata").execute();
+            for (Message msg : messages) {
+                String messageId = msg.getId();
+                Message message = gmail.users().messages()
+                        .get("me", messageId)
+                        .setFormat("metadata")
+                        .execute();
 
-                String subject = "", to = "", dateTime = "";
+                String subject = "", from = "", dateTime = "";
 
-                for (MessagePartHeader header : fullMessage.getPayload().getHeaders()) {
+                for (MessagePartHeader header : message.getPayload().getHeaders()) {
                     if ("Subject".equalsIgnoreCase(header.getName())) {
                         subject = header.getValue();
-                    } else if ("To".equalsIgnoreCase(header.getName())) {
-                        to = header.getValue();
+                    } else if ("From".equalsIgnoreCase(header.getName())) {
+                        from = header.getValue();
                     } else if ("Date".equalsIgnoreCase(header.getName())) {
                         dateTime = header.getValue();
                     }
                 }
-                sentEmailList.add("ID: " + messageId + "| 📩 To: " + to + " | Subject: " + subject + "| Date: " + dateTime);
+
+                Map<String, Object> emailInfo = new HashMap<>();
+                emailInfo.put("ID", messageId);
+                emailInfo.put("From", from);
+                emailInfo.put("Subject", subject);
+                emailInfo.put("Date", dateTime);
+
+                emailsList.add(emailInfo);
             }
-            for (String sentEmailInfo : sentEmailList) {
-                System.out.println(sentEmailInfo);
+
+            List<String> emailsInfo = emailsList.stream().map(Object::toString).toList();
+
+            for (String emailInfo : emailsInfo) {
+                System.out.println(emailInfo);
+                System.out.println("-----------------------------------");
             }
-            return sentEmailList;
-        }catch (Exception ex){
-            throw new RuntimeException(ex.getMessage());
+
+            return emailsList;
+
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to fetch emails by label: " + e.getMessage(), e);
         }
     }
+
 
     //listing inbox emails
     public List<String> getInboxEmails(String userEmail) throws Exception {
@@ -301,6 +348,8 @@ public class GmailService {
 
     public void sendEmailWithAttachment(String userEmail,
                                         String toEmail,
+//                                        String CC,
+//                                        String BCC,
                                         String subject,
                                         String bodyText,
                                         MultipartFile attachmentFile) throws Exception {
@@ -378,6 +427,46 @@ public class GmailService {
        } catch (Exception e) {
            throw new RuntimeException(e);
        }
+    }
+
+    //listing sent emails
+    public List<String>sentEmailList(String userEmail) throws Exception{
+        Gmail gmail = getGmail(userEmail);
+
+        try {
+
+            ListMessagesResponse listOfSentEmails = gmail.users().messages().list("me").setLabelIds(Arrays.asList("SENT")).execute();
+            List<String> sentEmailList = new ArrayList<>();
+
+            if (listOfSentEmails == null || listOfSentEmails.isEmpty()){
+                sentEmailList.add("No emails found in inbox.");
+                return sentEmailList;
+            }
+
+            for (Message message : listOfSentEmails.getMessages()) {
+                String messageId = message.getId();
+                Message fullMessage = gmail.users().messages().get("me", messageId).setFormat("metadata").execute();
+
+                String subject = "", to = "", dateTime = "";
+
+                for (MessagePartHeader header : fullMessage.getPayload().getHeaders()) {
+                    if ("Subject".equalsIgnoreCase(header.getName())) {
+                        subject = header.getValue();
+                    } else if ("To".equalsIgnoreCase(header.getName())) {
+                        to = header.getValue();
+                    } else if ("Date".equalsIgnoreCase(header.getName())) {
+                        dateTime = header.getValue();
+                    }
+                }
+                sentEmailList.add("ID: " + messageId + "| 📩 To: " + to + " | Subject: " + subject + "| Date: " + dateTime);
+            }
+            for (String sentEmailInfo : sentEmailList) {
+                System.out.println(sentEmailInfo);
+            }
+            return sentEmailList;
+        }catch (Exception ex){
+            throw new RuntimeException(ex.getMessage());
+        }
     }
 
     //listing draft emails
@@ -490,7 +579,7 @@ public class GmailService {
     }
 
      //fetching and displaying draft email body
-    public String readAnyEmailBody(String userEmail, String messageId, boolean isDraft) throws Exception {
+    public Map<String,Object> readAnyEmailBody(String userEmail, String messageId, boolean isDraft) throws Exception {
         Gmail gmail = getGmail(userEmail);
         try {
 
@@ -527,12 +616,19 @@ public class GmailService {
             // Extract body
             String body = extractBodyFromMessage(message);
 
-            System.out.println("📧 Draft To: " + to);
+            Map<String,Object>emailDetails = new HashMap<>();
+            System.out.println("📧 To: " + to);
             System.out.println("📝 Subject: " + subject);
             System.out.println("📅 Date: " + dateTime);
             System.out.println("📨 Body:\n" + body);
 
-            return body;
+            emailDetails.put("to",to);
+            emailDetails.put("subject",subject);
+            emailDetails.put("dateTime",dateTime);
+            emailDetails.put("body",body);
+
+
+            return emailDetails;
 
         } catch (Exception e) {
             throw new RuntimeException("Failed to read email: " + e.getMessage());
@@ -603,15 +699,26 @@ public class GmailService {
         // Multi-part message (HTML, attachments, etc.)
         for (MessagePart part : payload.getParts()) {
             String mimeType = part.getMimeType();
-
-            //get the main content, not binary data (like attachments)
-            if (mimeType.equals("text/plain") || mimeType.equals("text/html")) {
+            if ("text/html".equalsIgnoreCase(mimeType)) {
                 return decodeBase64(part.getBody().getData());
+            } else if ("text/plain".equalsIgnoreCase(mimeType)) {
+                // fallback
+                return decodeBase64(part.getBody().getData());
+            }
+
+            // Handle nested parts (like multipart/alternative)
+            if (part.getParts() != null && !part.getParts().isEmpty()) {
+                for (MessagePart inner : part.getParts()) {
+                    if ("text/html".equalsIgnoreCase(inner.getMimeType())) {
+                        return decodeBase64(inner.getBody().getData());
+                    }
+                }
             }
         }
 
         return "";
     }
+
 
 
 

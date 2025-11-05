@@ -3,7 +3,11 @@ package com.gmailIntegeration.Service;
 import com.gmailIntegeration.Configuration.GmailConfig1;
 
 import com.google.api.client.auth.oauth2.Credential;
+import com.google.api.client.googleapis.batch.BatchRequest;
+import com.google.api.client.googleapis.batch.json.JsonBatchCallback;
 import com.google.api.client.googleapis.javanet.GoogleNetHttpTransport;
+import com.google.api.client.googleapis.json.GoogleJsonError;
+import com.google.api.client.http.HttpHeaders;
 import com.google.api.client.json.gson.GsonFactory;
 import com.google.api.services.gmail.Gmail;
 import com.google.api.services.gmail.model.*;
@@ -100,16 +104,18 @@ public class GmailService {
         }
     }
 
-    //listing emails by label
+    //listing emails by label dynamically
+// listing emails by label dynamically (optimized)
     public List<Map<String, Object>> getEmailsByLabel(String userEmail, String label) throws Exception {
         Gmail gmail = getGmail(userEmail);
-        List<Map<String, Object>> emailsList = new ArrayList<>();
+        List<Map<String, Object>> emailsList = Collections.synchronizedList(new ArrayList<>());
 
         try {
+            // Step 1: Get message IDs for the label
             ListMessagesResponse response = gmail.users().messages()
                     .list("me")
                     .setLabelIds(Collections.singletonList(label))
-                    .setMaxResults(50L)
+                    .setMaxResults(10L)
                     .execute();
 
             List<Message> messages = response.getMessages();
@@ -119,40 +125,54 @@ public class GmailService {
                 return Collections.emptyList();
             }
 
+            // Step 2: Create a BatchRequest to fetch all message metadata in parallel
+            BatchRequest batch = gmail.batch();
+            //Creates an empty batch container tied to the Gmail client.
+
             for (Message msg : messages) {
-                String messageId = msg.getId();
-                Message message = gmail.users().messages()
-                        .get("me", messageId)
+                gmail.users()
+                        .messages()
+                        .get("me", msg.getId())
                         .setFormat("metadata")
-                        .execute();
+                        //Instead of calling .execute() on that request, you call .queue(...) which adds the request to the batch.
+                        //You pass a JsonBatchCallback<Message> which defines onSuccess and onFailure callbacks for that request.
+                        //The callback will be invoked later, after batch.execute() is called and the batch response is processed.
+                        .queue(batch, new JsonBatchCallback<Message>() {
+                            @Override
+                            public void onSuccess(Message message, HttpHeaders responseHeaders) {
+                                String subject = "", from = "", dateTime = "";
 
-                String subject = "", from = "", dateTime = "";
+                                for (MessagePartHeader header : message.getPayload().getHeaders()) {
+                                    switch (header.getName()) {
+                                        case "Subject" -> subject = header.getValue();
+                                        case "From" -> from = header.getValue();
+                                        case "Date" -> dateTime = header.getValue();
+                                    }
+                                }
 
-                for (MessagePartHeader header : message.getPayload().getHeaders()) {
-                    if ("Subject".equalsIgnoreCase(header.getName())) {
-                        subject = header.getValue();
-                    } else if ("From".equalsIgnoreCase(header.getName())) {
-                        from = header.getValue();
-                    } else if ("Date".equalsIgnoreCase(header.getName())) {
-                        dateTime = header.getValue();
-                    }
-                }
+                                Map<String, Object> emailInfo = new HashMap<>();
+                                emailInfo.put("ID", message.getId());
+                                emailInfo.put("From", from);
+                                emailInfo.put("Subject", subject);
+                                emailInfo.put("Date", dateTime);
+                                emailsList.add(emailInfo);
+                            }
 
-                Map<String, Object> emailInfo = new HashMap<>();
-                emailInfo.put("ID", messageId);
-                emailInfo.put("From", from);
-                emailInfo.put("Subject", subject);
-                emailInfo.put("Date", dateTime);
-
-                emailsList.add(emailInfo);
+                            @Override
+                            public void onFailure(GoogleJsonError e, HttpHeaders responseHeaders) {
+                                System.err.println("❌ Failed to fetch message: " + e.getMessage());
+                            }
+                        });
             }
 
-            List<String> emailsInfo = emailsList.stream().map(Object::toString).toList();
+            // Step 3: Execute all requests in one batch call
+            batch.execute();
 
-            for (String emailInfo : emailsInfo) {
-                System.out.println(emailInfo);
+            // Step 4: Print summary
+            emailsList.forEach(email -> {
+                System.out.println(email);
                 System.out.println("-----------------------------------");
-            }
+            });
 
             return emailsList;
 
@@ -657,7 +677,6 @@ public class GmailService {
         }
     }
 
-
     //deleting email permanently
     public void deleteEmail(String userEmail, String messageId) throws Exception {
 
@@ -718,8 +737,6 @@ public class GmailService {
 
         return "";
     }
-
-
 
 
     //fetching and displaying email body for sent and coming emails

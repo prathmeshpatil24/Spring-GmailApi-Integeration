@@ -2,7 +2,6 @@ package com.gmailIntegeration.Controller;
 
 
 import com.gmailIntegeration.Service.GmailService;
-import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -12,7 +11,6 @@ import java.util.List;
 import java.util.Map;
 
 
-@CrossOrigin(origins = "http://localhost:5173")
 @RestController
 @RequestMapping("/api/gmail")
 public class GmailController {
@@ -33,6 +31,7 @@ public class GmailController {
         }
     }
 
+    //$
     @GetMapping("/labels/{email}")
     public ResponseEntity<?> getLabels(@PathVariable String email) {
             try {
@@ -43,7 +42,9 @@ public class GmailController {
             }
     }
 
-    @GetMapping("/emails/{label}")
+    //$
+    //dynamic label fetching
+    @GetMapping("/labels/{email}/{label}")
     public ResponseEntity<?> getEmailsByLabel(
             @PathVariable String label,
             @PathVariable String email
@@ -56,6 +57,7 @@ public class GmailController {
                     .body("Failed to fetch emails for label: " + e.getMessage());
         }
     }
+
 
     @GetMapping("/inbox/{email}")
     public ResponseEntity<?> inbox(@PathVariable String email) throws Exception {

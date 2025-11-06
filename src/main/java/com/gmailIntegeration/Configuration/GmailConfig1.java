@@ -1,5 +1,6 @@
 package com.gmailIntegeration.Configuration;
 
+import com.gmailIntegeration.Entity.GmailTokenEntity;
 import com.gmailIntegeration.Repo.GmailTokenRepository;
 import com.gmailIntegeration.Utils.JpaDataStoreFactory;
 
@@ -27,6 +28,7 @@ import java.security.GeneralSecurityException;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 
 @Configuration
 public class GmailConfig1 {
@@ -187,7 +189,16 @@ public class GmailConfig1 {
         //Gets the real Gmail address of the authenticated user
         //form method 2.o
         Gmail gmail = buildGmail(tempCredential);
-        String userEmail = gmail.users().getProfile("me").execute().getEmailAddress();
+        String userEmail = gmail.users()
+                .getProfile("me")
+                .execute()
+                .getEmailAddress();
+
+        // Check if user is already authorized
+//        if (isAuthorized(userEmail)){
+//            System.out.println("User " + userEmail + " is already authorized.");
+//            return flow.loadCredential(userEmail); //reuse existing tokens
+//        }
 
         System.out.println("✅ Logged in Gmail user: " + userEmail);
 
@@ -243,6 +254,27 @@ public class GmailConfig1 {
        }
     }
 
+    // Check if user is authorized
+    public boolean isAuthorized(String userEmail) throws Exception{
+        // If not authorized, return link to Google OAuth screen
+        String url = getAuthorizationUrl();
+        try{
+            Optional<GmailTokenEntity> gmailTokenEntity = repository.findByUserEmail(userEmail);
+            if (gmailTokenEntity.isPresent()) {
+                System.out.println("Gmail is already authorized for user: " + userEmail);
+                return true;
+            } else {
+                System.out.println("⚠️ Gmail not authorized for user: " + userEmail + ". Please connect your Gmail account."
+                + " To authorize, visit: " + url);
+                return false;
+            }
+        }catch (Exception ex){
+
+            System.err.println("Error checking Gmail authorization for user " + userEmail + ": " + ex.getMessage());
+            throw new RuntimeException("Error checking Gmail authorization. Please try again later." +
+                    " To authorize, visit: " + url,ex);
+        }
+    }
 
 }
 

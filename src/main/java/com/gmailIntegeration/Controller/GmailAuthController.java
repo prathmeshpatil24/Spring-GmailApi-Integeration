@@ -20,21 +20,40 @@ public class GmailAuthController {
     }
 
     @GetMapping("/authorize")
-    public ResponseEntity<?> authorize() throws Exception {
-        String url = gmailConfig.getAuthorizationUrl();
-        return ResponseEntity.ok("<a href=\"" + url + "\">Authorize Gmail Access</a>");
+    public ResponseEntity<?> authorize(@RequestParam("email") String email) throws Exception {
+
+       try {
+           boolean authorized = gmailConfig.isAuthorized(email);// Check if already authorized
+
+           if (authorized) {
+               return ResponseEntity.ok("✅ Gmail already authorized for " + email +
+                       ". You can use Gmail API for read and write.");
+           }
+           String url = gmailConfig.getAuthorizationUrl();
+           return ResponseEntity.ok("<a href=\"" + url + "\">Authorize Gmail Access</a>");
+       } catch (Exception e) {
+           throw new RuntimeException(e);
+       }
     }
 
     @GetMapping("/oauth2/callback")
     public ResponseEntity<?> oauthCallback(@RequestParam("code") String code) throws Exception {
-        Credential credential = gmailConfig.handleCallback(code);
-        Gmail gmail = gmailConfig.buildGmail(credential);
+         try {
+             Credential credential = gmailConfig.handleCallback(code);
+             Gmail gmail = gmailConfig.buildGmail(credential);
 
-        Gmail.Users.GetProfile getProfile = gmail.users().getProfile("me");// Test API call
+             Gmail.Users.GetProfile getProfile = gmail.users().getProfile("me");// Test API call
 
-        String emailAddress = getProfile.execute().getEmailAddress();
-        System.out.println("Authorized Gmail ID: " + emailAddress);
-        return ResponseEntity.ok( "✅ Gmail authorization successful! Tokens saved to DB. + \n" +
-                "Authorized Gmail ID: " + emailAddress);
+             String emailAddress = getProfile.execute().getEmailAddress();
+             
+             System.out.println("Authorized Gmail ID: " + emailAddress);
+
+             return ResponseEntity.ok( "✅ Gmail authorization successful! Tokens saved to DB. + \n" +
+                         "Authorized Gmail ID: " + emailAddress);
+
+         }catch (Exception exception){
+            return ResponseEntity.ok(exception.getMessage());
+         }
+
     }
 }

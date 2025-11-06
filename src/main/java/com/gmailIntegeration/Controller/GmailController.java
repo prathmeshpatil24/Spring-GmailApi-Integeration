@@ -62,7 +62,8 @@ public class GmailController {
     @GetMapping("/inbox/{email}")
     public ResponseEntity<?> inbox(@PathVariable String email) throws Exception {
         try{
-            return ResponseEntity.ok(gmailService.getInboxEmails(email));
+            List<Map<String, Object>> inboxEmails = gmailService.getInboxEmails(email);
+            return ResponseEntity.ok(inboxEmails);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -135,10 +136,13 @@ public class GmailController {
 //            @RequestParam String BCC,
             @RequestParam String subject,
             @RequestParam String bodyText,
-            @RequestParam(required = false) MultipartFile attachmentFile) {
+            @RequestParam(required = false) List<MultipartFile> attachmentFiles) {
 
         try {
-            gmailService.sendEmailWithAttachment(userEmail, toEmail, subject, bodyText, attachmentFile);
+            for (MultipartFile file:attachmentFiles){
+                System.out.println("File Name: " + file.getOriginalFilename());
+            }
+            gmailService.sendEmailWithAttachment(userEmail, toEmail, subject, bodyText, attachmentFiles);
             return ResponseEntity.ok("Email sent successfully!");
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
@@ -150,9 +154,9 @@ public class GmailController {
     @GetMapping("/sent/{email}")
     public ResponseEntity<?> sentItems(@PathVariable String email) throws Exception {
         try {
-            List<String> sentEmails = gmailService.sentEmailList(email);
+            List<Map<String, Object>> sentEmailList = gmailService.sentEmailList(email);
 
-            return ResponseEntity.ok(sentEmails);
+            return ResponseEntity.ok(sentEmailList);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }

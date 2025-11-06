@@ -17,9 +17,11 @@ import jakarta.activation.DataSource;
 import jakarta.mail.Session;
 import jakarta.mail.internet.*;
 import jakarta.mail.util.ByteArrayDataSource;
+import jakarta.persistence.criteria.From;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
+import javax.security.auth.Subject;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -27,6 +29,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 public class GmailService {
@@ -104,8 +107,8 @@ public class GmailService {
         }
     }
 
-    //listing emails by label dynamically
-// listing emails by label dynamically (optimized)
+
+    //listing emails by label dynamically (optimized)
     public List<Map<String, Object>> getEmailsByLabel(String userEmail, String label) throws Exception {
         Gmail gmail = getGmail(userEmail);
         List<Map<String, Object>> emailsList = Collections.synchronizedList(new ArrayList<>());
@@ -129,7 +132,7 @@ public class GmailService {
             BatchRequest batch = gmail.batch();
             //Creates an empty batch container tied to the Gmail client.
 
-            for (Message msg : messages) {
+            for(Message msg : messages) {
                 gmail.users()
                         .messages()
                         .get("me", msg.getId())
@@ -143,11 +146,18 @@ public class GmailService {
                                 String subject = "", from = "", dateTime = "";
 
                                 for (MessagePartHeader header : message.getPayload().getHeaders()) {
-                                    switch (header.getName()) {
-                                        case "Subject" -> subject = header.getValue();
-                                        case "From" -> from = header.getValue();
-                                        case "Date" -> dateTime = header.getValue();
+                                     if ("Subject".equalsIgnoreCase(header.getName())) {
+                                        subject = header.getValue();
+                                    } else if ("From".equalsIgnoreCase(header.getName())) {
+                                        from = header.getValue();
+                                    } else if ("Date".equalsIgnoreCase(header.getName())) {
+                                        dateTime = header.getValue();
                                     }
+//                                   /* switch (header.getName()) {
+//                                        case "Subject" -> subject = header.getValue();
+//                                        case "From" -> from = header.getValue();
+//                                        case "Date" -> dateTime = header.getValue();
+//                                    }*/
                                 }
 
                                 Map<String, Object> emailInfo = new HashMap<>();
@@ -159,8 +169,14 @@ public class GmailService {
                             }
 
                             @Override
-                            public void onFailure(GoogleJsonError e, HttpHeaders responseHeaders) {
-                                System.err.println("❌ Failed to fetch message: " + e.getMessage());
+                            public void onFailure(GoogleJsonError googleJsonError, HttpHeaders responseHeaders) {
+                                System.err.println("Failed to fetch message: " + googleJsonError.getMessage());
+                                Map<String, Object> errorInfo = new HashMap<>();
+                                errorInfo.put("error", true);
+                                errorInfo.put("message", "Failed to fetch message.");
+                                errorInfo.put("details", googleJsonError.getMessage());
+                                emailsList.add(errorInfo);
+
                             }
                         });
             }
@@ -183,12 +199,15 @@ public class GmailService {
 
 
     //listing inbox emails
-    public List<String> getInboxEmails(String userEmail) throws Exception {
-
+    public List<Map<String, Object>> getInboxEmails(String userEmail) throws Exception {
+        Gmail gmail = getGmail(userEmail);
+        List<Map<String, Object>> emailsList = Collections
+                .synchronizedList(new ArrayList<>());
         try {
 
-            Gmail gmail = getGmail(userEmail);
-            List<String> emailList = new ArrayList<>();
+//            ListHistoryResponse historyResponse = gmail.users().history()
+//                    .list("me")
+//                    .execute();
 
             ListMessagesResponse response = gmail.users()
                     .messages()
@@ -199,7 +218,7 @@ public class GmailService {
                     ))
                     .setIncludeSpamTrash(false)
                     .setPrettyPrint(true)
-                    .setMaxResults(50L)
+                    .setMaxResults(10L)
                     .execute();
 
             //System.out.println(response.getNextPageToken());// for pagination
@@ -207,38 +226,63 @@ public class GmailService {
             List<Message> messages = response.getMessages();
 
             if (messages == null || messages.isEmpty()) {
-                emailList.add("No emails found in inbox.");
-                return emailList;
+                Map<String, Object> noEmailMap = new HashMap<>();
+                noEmailMap.put("message", "No emails found in inbox.");
+                emailsList.add(noEmailMap);
+
+                //emailList.add("No emails found in inbox.");
+                return emailsList;
             }
+
+            BatchRequest batch = gmail.batch();
 
             for (Message msg : messages) {
                 String messageId = msg.getId();  //this is your unique ID
-                Message message = gmail.users()
+                gmail.users()
                         .messages()
                         .get("me", msg.getId())
                         .setFormat("metadata")
-                        .execute();
+                        .queue(batch, new JsonBatchCallback<Message>() {
+                            @Override
+                            public void onFailure(GoogleJsonError googleJsonError, HttpHeaders httpHeaders) throws IOException {
+                                System.err.println("Failed to fetch message: " + googleJsonError.getMessage());
+                                Map<String, Object> errorInfo = new HashMap<>();
+                                errorInfo.put("error", true);
+                                errorInfo.put("message", "Failed to fetch message.");
+                                errorInfo.put("details", googleJsonError.getMessage());
+                                emailsList.add(errorInfo);
+                            }
 
-                String subject = "", from = "", dateTime = "";
+                            @Override
+                            public void onSuccess(Message message, HttpHeaders httpHeaders) throws IOException {
+                                String subject = "", from = "", dateTime = "";
+                                for (MessagePartHeader header : message.getPayload().getHeaders()) {
 
-                //Iterates through all message headers and extracts specific ones
-                for (MessagePartHeader header : message.getPayload().getHeaders()) {
-
-                    //header.getName() gives the key like Subject, From, To, Date,  etc.
-                    if ("Subject".equalsIgnoreCase(header.getName())){
-                        subject = header.getValue();// gets the value of the header
-                    } else if ("From".equalsIgnoreCase(header.getName())){
-                        from = header.getValue();
-                    } else if ("Date".equalsIgnoreCase(header.getName())) {
-                        dateTime = header.getValue();
-                    }
-                }
-                emailList.add("ID: " + messageId + "| 📩 From: " + from + " | Subject: " + subject + "| Date: " + dateTime );// for testing purpose
+                                    //header.getName() gives the key like Subject, From, To, Date,  etc.
+                                    if ("Subject".equalsIgnoreCase(header.getName())){
+                                        subject = header.getValue();// gets the value of the header
+                                    } else if ("From".equalsIgnoreCase(header.getName())){
+                                        from = header.getValue();
+                                    } else if ("Date".equalsIgnoreCase(header.getName())) {
+                                        dateTime = header.getValue();
+                                    }
+                                }
+                                Map<String, Object> emailInfo = new HashMap<>();
+                                emailInfo.put("ID", message.getId());
+                                emailInfo.put("From", from);
+                                emailInfo.put("Subject", subject);
+                                emailInfo.put("Date", dateTime);
+                                emailsList.add(emailInfo);
+                            }
+                        });
             }
-            for (String emailInfo : emailList) {
-                System.out.println(emailInfo);
-            }
-            return emailList;
+            batch.execute();
+
+            emailsList.forEach(email -> {
+                System.out.println(email);
+                System.out.println("-----------------------------------");
+            });
+            return emailsList;
         } catch (Exception e) {
             throw new RuntimeException(e.getMessage());
         }
@@ -372,7 +416,7 @@ public class GmailService {
 //                                        String BCC,
                                         String subject,
                                         String bodyText,
-                                        MultipartFile attachmentFile) throws Exception {
+                                        List<MultipartFile> attachmentFiles) throws Exception {
 
         Gmail gmail = getGmail(userEmail);
 
@@ -383,7 +427,6 @@ public class GmailService {
            MimeMessage email = new MimeMessage(session);
            email.setFrom(new InternetAddress(userEmail));
            email.addRecipient(jakarta.mail.Message.RecipientType.TO, new InternetAddress(toEmail));
-
 //           // Optional: add CC recipients
 //           if (ccEmail != null && !ccEmail.isEmpty()) {
 //               email.addRecipient(jakarta.mail.Message.RecipientType.CC, new InternetAddress(ccEmail));
@@ -403,31 +446,35 @@ public class GmailService {
            multipart.addBodyPart(textPart);
 
            //Handle optional MultipartFile safely
-           if (attachmentFile != null && !attachmentFile.isEmpty()) {
-               try {
-                   MimeBodyPart attachmentPart = new MimeBodyPart();
+           if (attachmentFiles!=null && !attachmentFiles.isEmpty()){
+               for (MultipartFile attachmentFile:attachmentFiles){
+                   try {
+                       MimeBodyPart attachmentPart = new MimeBodyPart();
 
-                   // You can directly use MultipartFile’s input stream and content type
-                   DataSource source = new ByteArrayDataSource(
-                           attachmentFile.getInputStream(),
-                           attachmentFile.getContentType() != null
-                                   ? attachmentFile.getContentType()
-                                   : "application/octet-stream"
-                   );
-                   attachmentPart.setDataHandler(new DataHandler(source));
-                   attachmentPart.setFileName(
-                           MimeUtility.encodeText(attachmentFile.getOriginalFilename())
-                   );
-                   multipart.addBodyPart(attachmentPart);
-               } catch (Exception e) {
-                   System.err.println("Failed to attach file: " + e.getMessage());
+                       // You can directly use MultipartFile’s input stream and content type
+                       DataSource source = new ByteArrayDataSource(
+                               attachmentFile.getInputStream(),
+                               attachmentFile.getContentType() != null
+                                       ? attachmentFile.getContentType()
+                                       : "application/octet-stream"
+                       );
+                       attachmentPart.setDataHandler(new DataHandler(source));
+                       attachmentPart.setFileName(
+                               MimeUtility.encodeText(attachmentFile.getOriginalFilename())
+                       );
+                       multipart.addBodyPart(attachmentPart);
+                   } catch (Exception e) {
+                       System.err.println("Failed to attach file: " + e.getMessage());
+                   }
                }
-           } else {
+               System.out.println("Attachment files list is null or empty.");
+           }else {
                System.out.println("No attachment provided. Sending email without attachment.");
            }
 
            email.setContent(multipart);
 
+           //--- Encode message ---
            ByteArrayOutputStream buffer = new ByteArrayOutputStream();
            email.writeTo(buffer);
 
@@ -437,53 +484,107 @@ public class GmailService {
            Message message = new Message();
            message.setRaw(encodedEmail);
 
-           gmail.users().messages().send("me", message).execute();
+           // --- Send email via Gmail API ---
+           Message sentMessage = gmail.users()
+                   .messages()
+                   .send("me", message)
+                   .execute();
 
-           System.out.println("Email sent successfully" +
-                   (attachmentFile != null && !attachmentFile.isEmpty()
-                           ? " with attachment: " + attachmentFile.getOriginalFilename()
-                           : " without attachment."));
+           if (sentMessage!=null && sentMessage.getId()!=null){
+               if (attachmentFiles!=null && !attachmentFiles.isEmpty()){
+                   String filesName = attachmentFiles.stream()
+                           .map(MultipartFile::getOriginalFilename)
+                           .collect(Collectors.joining(","));
+                     System.out.println("Email sent successfully with attachments: " + filesName);
+               }else {
+                   System.out.println("Email sent successfully without attachments.");
+               }
+           }else {
+               System.err.println("Email sending failed: Gmail API returned null response.");
+           }
 
        } catch (Exception e) {
-           throw new RuntimeException(e);
+           throw new RuntimeException("Error while sending email: " + e.getMessage());
        }
     }
 
     //listing sent emails
-    public List<String>sentEmailList(String userEmail) throws Exception{
+    public List<Map<String, Object>> sentEmailList(String userEmail) throws Exception{
         Gmail gmail = getGmail(userEmail);
 
+        //wraps your ArrayList in a thread-safe wrapper, meaning:
+        //Only one thread can modify it at a time (add, remove, etc.)
+        //Prevents concurrent modification problems.
+        //That’s why it’s used here — because Gmail’s batch callbacks run asynchronously.
+        List<Map<String, Object>> emailsList = Collections
+                .synchronizedList(new ArrayList<>());
         try {
+            ListMessagesResponse listOfSentEmails = gmail.users()
+                    .messages()
+                    .list("me")
+                    .setLabelIds(Arrays.asList("SENT"))
+                    .execute();
 
-            ListMessagesResponse listOfSentEmails = gmail.users().messages().list("me").setLabelIds(Arrays.asList("SENT")).execute();
-            List<String> sentEmailList = new ArrayList<>();
+            List<Message> messages = listOfSentEmails.getMessages();
 
-            if (listOfSentEmails == null || listOfSentEmails.isEmpty()){
-                sentEmailList.add("No emails found in inbox.");
-                return sentEmailList;
+
+            if (messages == null || messages.isEmpty()){
+                Map<String, Object> noEmailMap = new HashMap<>();
+                noEmailMap.put("message", "No emails found in inbox.");
+                emailsList.add(noEmailMap);
+                return emailsList;
             }
 
-            for (Message message : listOfSentEmails.getMessages()) {
+            BatchRequest batch = gmail.batch();
+
+            for (Message message : messages) {
                 String messageId = message.getId();
-                Message fullMessage = gmail.users().messages().get("me", messageId).setFormat("metadata").execute();
+                gmail
+                        .users()
+                        .messages()
+                        .get("me", messageId)
+                        .setFormat("metadata")
+                        .queue(batch, new JsonBatchCallback<Message>() {
+                            @Override
+                            public void onFailure(GoogleJsonError googleJsonError, HttpHeaders httpHeaders) throws IOException {
+                                System.err.println("Failed to fetch message: " + googleJsonError.getMessage());
+                                Map<String, Object> errorInfo = new HashMap<>();
+                                errorInfo.put("error", true);
+                                errorInfo.put("message", "Failed to fetch message.");
+                                errorInfo.put("details", googleJsonError.getMessage());
+                                emailsList.add(errorInfo);
+                            }
 
-                String subject = "", to = "", dateTime = "";
+                            @Override
+                            public void onSuccess(Message message, HttpHeaders httpHeaders) throws IOException {
+                                String subject = "", to = "", dateTime = "";
+                                for (MessagePartHeader header : message.getPayload().getHeaders()) {
+                                    if ("Subject".equalsIgnoreCase(header.getName())) {
+                                        subject = header.getValue();
+                                    } else if ("To".equalsIgnoreCase(header.getName())) {
+                                        to = header.getValue();
+                                    } else if ("Date".equalsIgnoreCase(header.getName())) {
+                                        dateTime = header.getValue();
+                                    }
+                                }
+                                Map<String, Object> emailInfo = new HashMap<>();
+                                emailInfo.put("ID", message.getId());
+                                emailInfo.put("To", to);
+                                emailInfo.put("Subject", subject);
+                                emailInfo.put("Date", dateTime);
+                                emailsList.add(emailInfo);
+                            }
+                        });
+            }
+            batch.execute();
+            // Step 4: Print summary
+            emailsList.forEach(email -> {
+                System.out.println(email);
+                System.out.println("-----------------------------------");
+            });
 
-                for (MessagePartHeader header : fullMessage.getPayload().getHeaders()) {
-                    if ("Subject".equalsIgnoreCase(header.getName())) {
-                        subject = header.getValue();
-                    } else if ("To".equalsIgnoreCase(header.getName())) {
-                        to = header.getValue();
-                    } else if ("Date".equalsIgnoreCase(header.getName())) {
-                        dateTime = header.getValue();
-                    }
-                }
-                sentEmailList.add("ID: " + messageId + "| 📩 To: " + to + " | Subject: " + subject + "| Date: " + dateTime);
-            }
-            for (String sentEmailInfo : sentEmailList) {
-                System.out.println(sentEmailInfo);
-            }
-            return sentEmailList;
+            return emailsList;
+
         }catch (Exception ex){
             throw new RuntimeException(ex.getMessage());
         }
@@ -545,7 +646,7 @@ public class GmailService {
                     .setLabelIds(Collections.singletonList("SPAM"))
                     .setIncludeSpamTrash(false)
                     .setPrettyPrint(true)
-                    .setMaxResults(50L)
+                    .setMaxResults(10L)
                     .execute();
 
             ArrayList<String>listOfSpam = new ArrayList<>();
@@ -737,6 +838,138 @@ public class GmailService {
 
         return "";
     }
+
+
+    public Map<String,Object>readFullEmailBody(String userEmail,
+                                               String messageId,
+                                               boolean isDraft) throws Exception{
+
+        Gmail gmail = getGmail(userEmail);
+        try {
+
+            //fetch message or draft based on isDraft flag
+            Message message;
+            if (isDraft){
+                // Get full draft message
+                Draft draft = gmail.users()
+                        .drafts()
+                        .get("me", messageId)
+                        .execute();
+
+                message = draft.getMessage();
+
+            }else {
+                message = gmail.users()
+                        .messages()
+                        .get("me", messageId)
+                        .setFormat("full")
+                        .execute();
+            }
+
+            Map<String, String> extractHeaders = extractHeaders(message.getPayload());
+
+            return null;// temp
+
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to read email: " + e.getMessage(), e);
+        }
+
+    }
+
+    // Extracts email headers (To, From, Subject, Date, etc.)
+    private Map<String, String> extractHeaders(MessagePart payload) {
+        Map<String, String> headers = new HashMap<>();
+        if (payload.getHeaders() == null) return headers;
+
+        for (MessagePartHeader header : payload.getHeaders()) {
+            headers.put(header.getName(), header.getValue());
+        }
+        return headers;
+    }
+
+//    //reading attachments from email
+//    public List<Map<String, Object>> readAnyAttachments(Gmail gmail,
+//                                                        String userEmail,
+//                                                        Message message)
+//            throws Exception {
+//
+//        List<Map<String, Object>> attachments = new ArrayList<>();
+//
+//        // Step 1: Get message payload
+//        MessagePart payload = message.getPayload();
+//
+//        // Step 2: Iterate through message parts
+//        List<MessagePart> parts = payload.getParts();
+//        if (parts == null) return attachments;
+//
+//        for (MessagePart part : parts) {
+//
+//            // Step 3: Check if this part has a filename (means it's an attachment)
+//            if (part.getFilename() != null && !part.getFilename().isEmpty()) {
+//
+//                String attachmentId = part.getBody().getAttachmentId();
+//
+//                // Step 4: Fetch attachment data
+//                MessagePartBody attachPart = gmail.users()
+//                        .messages()
+//                        .attachments()
+//                        .get(userEmail, message.getId(), attachmentId)
+//                        .execute();
+//
+//                // Step 5: Decode base64 data
+//                byte[] fileBytes = Base64.getDecoder().decode(attachPart.getData());
+//
+//                // Step 6: Store details in a map (you can also save to file)
+//                Map<String, Object> fileData = new HashMap<>();
+//                fileData.put("fileName", part.getFilename());
+//                fileData.put("mimeType", part.getMimeType());
+//                fileData.put("size", fileBytes.length);
+//                fileData.put("data", fileBytes); // optional — or save locally
+//
+//                attachments.add(fileData);
+//            }
+//
+//            // Step 7: Handle nested parts (some emails have attachments inside multipart/mixed)
+//            if (part.getParts() != null && !part.getParts().isEmpty()) {
+//                attachments.addAll(readNestedAttachments(gmail, userEmail, message.getId(), part.getParts()));
+//            }
+//        }
+//
+//        return attachments;
+//    }
+//
+//    // helper for nested parts
+//    private List<Map<String, Object>> readNestedAttachments(Gmail gmail,
+//                                                            String userEmail,
+//                                                            String messageId,
+//                                                            List<MessagePart> parts)
+//            throws Exception {
+//        List<Map<String, Object>> attachments = new ArrayList<>();
+//
+//        for (MessagePart inner : parts) {
+//            if (inner.getFilename() != null && !inner.getFilename().isEmpty()) {
+//                String attachmentId = inner.getBody().getAttachmentId();
+//                MessagePartBody attachPart = gmail.users()
+//                        .messages()
+//                        .attachments()
+//                        .get(userEmail, messageId, attachmentId)
+//                        .execute();
+//
+//                byte[] fileBytes = Base64.getDecoder().decode(attachPart.getData());
+//
+//                Map<String, Object> fileData = new HashMap<>();
+//                fileData.put("fileName", inner.getFilename());
+//                fileData.put("mimeType", inner.getMimeType());
+//                fileData.put("size", fileBytes.length);
+//                fileData.put("data", fileBytes);
+//
+//                attachments.add(fileData);
+//            }
+//        }
+//
+//        return attachments;
+//    }
+
 
 
     //fetching and displaying email body for sent and coming emails

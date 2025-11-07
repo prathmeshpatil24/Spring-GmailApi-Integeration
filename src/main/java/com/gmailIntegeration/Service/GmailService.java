@@ -17,11 +17,9 @@ import jakarta.activation.DataSource;
 import jakarta.mail.Session;
 import jakarta.mail.internet.*;
 import jakarta.mail.util.ByteArrayDataSource;
-import jakarta.persistence.criteria.From;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
-import javax.security.auth.Subject;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -41,7 +39,7 @@ public class GmailService {
     }
 
     // helper method to create Gmail instance
-    private Gmail getGmail(String userEmail) throws Exception {
+    public Gmail getGmail(String userEmail) throws Exception {
         try{
             Credential credential = gmailConfig.getStoredCredential(userEmail);
             if (credential == null) {
@@ -819,6 +817,8 @@ public class GmailService {
         // Multi-part message (HTML, attachments, etc.)
         for (MessagePart part : payload.getParts()) {
             String mimeType = part.getMimeType();
+
+            // Check for HTML part
             if ("text/html".equalsIgnoreCase(mimeType)) {
                 return decodeBase64(part.getBody().getData());
             } else if ("text/plain".equalsIgnoreCase(mimeType)) {
@@ -839,7 +839,7 @@ public class GmailService {
         return "";
     }
 
-
+    //fetching full email body with headers, body and attachments
     public Map<String,Object>readFullEmailBody(String userEmail,
                                                String messageId,
                                                boolean isDraft) throws Exception{
@@ -866,9 +866,33 @@ public class GmailService {
                         .execute();
             }
 
-            Map<String, String> extractHeaders = extractHeaders(message.getPayload());
+            // Extract headers
+            Map<String, String> headers = extractHeaders(message.getPayload());
 
-            return null;// temp
+            // Extract body
+            String body = extractBodyFromMessage(message);
+
+            //extract attachments
+            List<Map<String, Object>> attachments = readAttachments(gmail, userEmail, message);
+
+            //combine all email details
+            Map<String,Object> emailDetails = new HashMap<>();
+            emailDetails.put("to", headers.getOrDefault("To", ""));
+            emailDetails.put("from", headers.getOrDefault("From", ""));
+            emailDetails.put("subject", headers.getOrDefault("Subject", ""));
+            emailDetails.put("date", headers.getOrDefault("Date", ""));
+            emailDetails.put("body", body);
+            emailDetails.put("attachments", attachments);
+
+            // Display email details in console
+            System.out.println("📧 From: " + headers.getOrDefault("From", ""));
+            System.out.println("📧 Subject: " + headers.getOrDefault("Subject", ""));
+            System.out.println("📬 To: " + headers.getOrDefault("To", ""));
+            System.out.println("📅 Date: " + headers.getOrDefault("Date", ""));
+            System.out.println("📨 Body: " + body);
+            System.out.println("📎 Attachments: " + attachments.size());
+
+            return emailDetails;// temp
 
         } catch (Exception e) {
             throw new RuntimeException("Failed to read email: " + e.getMessage(), e);
@@ -887,122 +911,72 @@ public class GmailService {
         return headers;
     }
 
-//    //reading attachments from email
-//    public List<Map<String, Object>> readAnyAttachments(Gmail gmail,
-//                                                        String userEmail,
-//                                                        Message message)
-//            throws Exception {
-//
-//        List<Map<String, Object>> attachments = new ArrayList<>();
-//
-//        // Step 1: Get message payload
-//        MessagePart payload = message.getPayload();
-//
-//        // Step 2: Iterate through message parts
-//        List<MessagePart> parts = payload.getParts();
-//        if (parts == null) return attachments;
-//
-//        for (MessagePart part : parts) {
-//
-//            // Step 3: Check if this part has a filename (means it's an attachment)
-//            if (part.getFilename() != null && !part.getFilename().isEmpty()) {
-//
-//                String attachmentId = part.getBody().getAttachmentId();
-//
-//                // Step 4: Fetch attachment data
-//                MessagePartBody attachPart = gmail.users()
-//                        .messages()
-//                        .attachments()
-//                        .get(userEmail, message.getId(), attachmentId)
-//                        .execute();
-//
-//                // Step 5: Decode base64 data
-//                byte[] fileBytes = Base64.getDecoder().decode(attachPart.getData());
-//
-//                // Step 6: Store details in a map (you can also save to file)
-//                Map<String, Object> fileData = new HashMap<>();
-//                fileData.put("fileName", part.getFilename());
-//                fileData.put("mimeType", part.getMimeType());
-//                fileData.put("size", fileBytes.length);
-//                fileData.put("data", fileBytes); // optional — or save locally
-//
-//                attachments.add(fileData);
-//            }
-//
-//            // Step 7: Handle nested parts (some emails have attachments inside multipart/mixed)
-//            if (part.getParts() != null && !part.getParts().isEmpty()) {
-//                attachments.addAll(readNestedAttachments(gmail, userEmail, message.getId(), part.getParts()));
-//            }
-//        }
-//
-//        return attachments;
-//    }
-//
-//    // helper for nested parts
-//    private List<Map<String, Object>> readNestedAttachments(Gmail gmail,
-//                                                            String userEmail,
-//                                                            String messageId,
-//                                                            List<MessagePart> parts)
-//            throws Exception {
-//        List<Map<String, Object>> attachments = new ArrayList<>();
-//
-//        for (MessagePart inner : parts) {
-//            if (inner.getFilename() != null && !inner.getFilename().isEmpty()) {
-//                String attachmentId = inner.getBody().getAttachmentId();
-//                MessagePartBody attachPart = gmail.users()
-//                        .messages()
-//                        .attachments()
-//                        .get(userEmail, messageId, attachmentId)
-//                        .execute();
-//
-//                byte[] fileBytes = Base64.getDecoder().decode(attachPart.getData());
-//
-//                Map<String, Object> fileData = new HashMap<>();
-//                fileData.put("fileName", inner.getFilename());
-//                fileData.put("mimeType", inner.getMimeType());
-//                fileData.put("size", fileBytes.length);
-//                fileData.put("data", fileBytes);
-//
-//                attachments.add(fileData);
-//            }
-//        }
-//
-//        return attachments;
-//    }
+    // Reads all attachments from an email message.
+    private List<Map<String,Object>> readAttachments(Gmail gmail,
+                                                     String userEmail,
+                                                     Message message) throws Exception{
+
+        List<Map<String,Object>> attachments = new ArrayList<>();
+
+        MessagePart payload = message.getPayload();
+
+        if (payload==null || payload.isEmpty()){
+            return attachments;
+        }
+
+        for (MessagePart part:payload.getParts()){
+            // Identify attachments by filename
+            if (part.getFilename() != null && !part.getFilename().isEmpty()) {
+                attachments.add(fetchAttachment(gmail, userEmail, message.getId(), part));
+            }
+
+            // Handle nested attachments
+            if (part.getParts() != null && !part.getParts().isEmpty()) {
+                attachments.addAll(readNestedAttachments(gmail, userEmail, message.getId(), part.getParts()));
+            }
+        }
+
+        return attachments;
+    }
+
+    // Reads attachments nested under multipart/mixed or other structures
+    private List<Map<String, Object>> readNestedAttachments(Gmail gmail, String userEmail, String messageId, List<MessagePart> parts) throws Exception {
+        List<Map<String, Object>> attachments = new ArrayList<>();
+
+        for (MessagePart inner : parts) {
+            if (inner.getFilename() != null && !inner.getFilename().isEmpty()) {
+                attachments.add(fetchAttachment(gmail, userEmail, messageId, inner));
+            }
+        }
+
+        return attachments;
+    }
+
+    //Helper method to fetch and decode a single attachment
+    private Map<String, Object> fetchAttachment(Gmail gmail, String userEmail, String messageId, MessagePart part) throws Exception {
+        String attachmentId = part.getBody().getAttachmentId();
+
+        MessagePartBody attachPart = gmail.users()
+                .messages()
+                .attachments()
+                .get(userEmail, messageId, attachmentId)
+                .execute();
+
+        byte[] fileBytes = Base64.getUrlDecoder().decode(attachPart.getData());
+
+        Map<String, Object> fileData = new HashMap<>();
+        System.out.println("Attachment id:- " + attachmentId);
+//        fileData.put("attachmentId", attachmentId);
+        fileData.put("fileName", part.getFilename());
+        fileData.put("mimeType", part.getMimeType());
+//        fileData.put("size", fileBytes.length);
+//        fileData.put("data", fileBytes);
+        String viewUrl = "http://localhost:8080/api/gmail/" + userEmail + "/" + messageId + "/" + attachmentId;
+
+        fileData.put("viewUrl", viewUrl);
 
 
+        return fileData;
+    }
 
-    //fetching and displaying email body for sent and coming emails
-//    public String readEmailBody(String userEmail, String messageId) throws Exception {
-//        try {
-//            Gmail gmailService = getGmail(userEmail);
-//
-//            // Fetch full message details
-//            Message message = gmailService.users().messages()
-//                    .get("me", messageId)
-//                    .setFormat("full")//full content (including headers + all message parts)
-//                    .execute();
-//
-//            // Extract body content
-//            String body = extractBodyFromMessage(message);
-//            String subject = "", from = "";
-//            for (MessagePartHeader header : message.getPayload().getHeaders()) {
-//
-//                //header.getName() gives the key like Subject, From, To, Date, etc.
-//                if ("Subject".equalsIgnoreCase(header.getName())){
-//                    subject = header.getValue();// gets the value of the header
-//                }else if ("From".equalsIgnoreCase(header.getName())){
-//                    from = header.getValue();
-//                }
-//            }
-//
-//            System.out.println("📧 From: " + from);
-//            System.out.println("📝 Subject: " + subject);
-//            System.out.println("📨 Body:\n" + body);
-//
-//            return body;
-//        } catch (Exception e) {
-//            throw new RuntimeException(e);
-//        }
-//    }
 }

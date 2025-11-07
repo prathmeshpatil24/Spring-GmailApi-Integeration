@@ -2,11 +2,16 @@ package com.gmailIntegeration.Controller;
 
 
 import com.gmailIntegeration.Service.GmailService;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
+import com.google.api.services.gmail.Gmail;
+import com.google.api.services.gmail.model.MessagePartBody;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.ByteArrayInputStream;
+import java.net.URLConnection;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 
@@ -19,7 +24,8 @@ public class GmailController {
 //    private final JsonOrTextConversion jsonOrTextConversion;
 
     public GmailController(GmailService gmailService) {
-        this.gmailService = gmailService;}
+        this.gmailService = gmailService;
+    }
 
     @GetMapping("/currentUser/{email}")
     public ResponseEntity<String> getCurrentUser(@PathVariable String email) {
@@ -34,12 +40,12 @@ public class GmailController {
     //$
     @GetMapping("/labels/{email}")
     public ResponseEntity<?> getLabels(@PathVariable String email) {
-            try {
-                List<String> labels = gmailService.listLabels(email);
-                return ResponseEntity.ok(labels);
-            } catch (Exception e) {
-                throw new RuntimeException(e);
-            }
+        try {
+            List<String> labels = gmailService.listLabels(email);
+            return ResponseEntity.ok(labels);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 
     //$
@@ -61,7 +67,7 @@ public class GmailController {
 
     @GetMapping("/inbox/{email}")
     public ResponseEntity<?> inbox(@PathVariable String email) throws Exception {
-        try{
+        try {
             List<Map<String, Object>> inboxEmails = gmailService.getInboxEmails(email);
             return ResponseEntity.ok(inboxEmails);
         } catch (Exception e) {
@@ -76,9 +82,11 @@ public class GmailController {
             @PathVariable(required = false) boolean isDraft
     ) {
         try {
-            Map<String, Object> emailBody = gmailService.readAnyEmailBody(email, messageId, isDraft);
+//            Map<String, Object> emailBody = gmailService.readAnyEmailBody(email, messageId, isDraft);
 
-            return ResponseEntity.ok(emailBody);
+            Map<String, Object> emailBody1 = gmailService.readFullEmailBody(email, messageId, isDraft);
+
+            return ResponseEntity.ok(emailBody1);
         } catch (Exception e) {
             e.printStackTrace();
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
@@ -88,7 +96,7 @@ public class GmailController {
 
 
     @PostMapping("/inbox/{email}/{messageId}/star")
-    public ResponseEntity<?>toggleStarredEmail(
+    public ResponseEntity<?> toggleStarredEmail(
             @PathVariable String email,
             @PathVariable String messageId,
             @RequestParam boolean starStatus
@@ -105,8 +113,8 @@ public class GmailController {
     }
 
     @GetMapping("/starred/{email}")
-    public ResponseEntity<?> listOfStarredEmail(@PathVariable String email){
-        try{
+    public ResponseEntity<?> listOfStarredEmail(@PathVariable String email) {
+        try {
             List<String> starredEmails = gmailService.getStarredEmails(email);
             return ResponseEntity.ok(starredEmails);
         } catch (Exception e) {
@@ -139,7 +147,7 @@ public class GmailController {
             @RequestParam(required = false) List<MultipartFile> attachmentFiles) {
 
         try {
-            for (MultipartFile file:attachmentFiles){
+            for (MultipartFile file : attachmentFiles) {
                 System.out.println("File Name: " + file.getOriginalFilename());
             }
             gmailService.sendEmailWithAttachment(userEmail, toEmail, subject, bodyText, attachmentFiles);
@@ -169,9 +177,9 @@ public class GmailController {
             @PathVariable(required = false) boolean isDraft
     ) {
         try {
-            Map<String, Object> emailBody = gmailService.readAnyEmailBody(email, messageId, isDraft);
-
-            return ResponseEntity.ok(emailBody);
+//            Map<String, Object> emailBody = gmailService.readAnyEmailBody(email, messageId, isDraft);
+            Map<String, Object> emailBody1 = gmailService.readFullEmailBody(email, messageId, isDraft);
+            return ResponseEntity.ok(emailBody1);
         } catch (Exception e) {
             e.printStackTrace();
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
@@ -252,9 +260,9 @@ public class GmailController {
 
     @GetMapping("/unTrashEmail/{email}/{messageId}")
     public ResponseEntity<?> unTrashEmail(@PathVariable String email,
-                                              @PathVariable String messageId) {
+                                          @PathVariable String messageId) {
         try {
-            gmailService.unTrashEmail(email,messageId);
+            gmailService.unTrashEmail(email, messageId);
             return ResponseEntity.ok("Email moved from Trash successfully!");
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
@@ -273,81 +281,121 @@ public class GmailController {
         }
     }
 
+
+    @GetMapping("/{email}/{messageId}/{attachmentId}")
+    public ResponseEntity<?> viewAttachment(
+            @PathVariable String email,
+            @PathVariable String messageId,
+            @PathVariable String attachmentId) {
+        try {
+
+            Gmail gmail = gmailService.getGmail(email);
+
+            // Fetch the attachment
+            MessagePartBody attachPart = gmail.users()
+                    .messages()
+                    .attachments()
+                    .get(email, messageId, attachmentId)
+                    .execute();
+
+            // Decode base64 data
+            byte[] fileBytes = Base64.getUrlDecoder().decode(attachPart.getData());
+
+            //Try to detect the real MIME type
+            String detectedMimeType = null;
+            try {
+                detectedMimeType = URLConnection.guessContentTypeFromStream(new ByteArrayInputStream(fileBytes));
+            } catch (Exception ignored) {}
+
+            // Fallback to default
+            if(detectedMimeType == null) {
+                detectedMimeType = "application/octet-stream";
+            }
+
+            //Extract extension from MIME
+            String extension = detectedMimeType.split("/")[1];
+            String filename = "attachment." + extension;
+
+            //Return the correct content type and inline display
+            return ResponseEntity.ok()
+                    .contentType(MediaType.parseMediaType(detectedMimeType))
+                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"") //for download use "attachment; filename=..."
+                    .body(new ByteArrayResource(fileBytes));
+
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Error fetching attachment: " + e.getMessage());
+        }
+    }
+
+
+    private String getExtensionFromMimeType(String mimeType) {
+        if (mimeType == null) {
+            return "bin"; // default unknown
+        }
+
+        switch (mimeType) {
+            case "image/jpeg":
+                return "jpg";
+            case "image/png":
+                return "png";
+            case "application/pdf":
+                return "pdf";
+            case "text/plain":
+                return "txt";
+            case "application/msword":
+                return "doc";
+            case "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+                return "docx";
+            case "application/vnd.ms-excel":
+                return "xls";
+            case "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
+                return "xlsx";
+            default:
+                return "bin";
+        }
+    }
+
+
+    //1
+//    @GetMapping("/attachments/{email}/{messageId}/{attachmentId}")
+//    public ResponseEntity<?> viewAttachment(@PathVariable String email,
+//                                            @PathVariable String messageId,
+//                                            @PathVariable String attachmentId) {
+//        try {
+//
+//            Gmail gmail = gmailService.getGmail(email);
+//
+//            Message message = gmail.users().messages().get("me", messageId).execute();
+//            MessagePart messagePayload = message.getPayload();
+//            String mimeType = messagePayload.getMimeType();
+//
+//
+//            MessagePartBody attachPart = gmail.users()
+//                    .messages()
+//                    .attachments()
+//                    .get(email, messageId, attachmentId)
+//                    .execute();
+//
+//            // Decode the Base64 data
+//            byte[] fileBytes = Base64.getUrlDecoder().decode(attachPart.getData());
+//
+//            // Optionally detect content type (you can also store it from original part)
+//
+//       //String contentType = Files.probeContentType(Paths.get("dummy." + getExtensionFromMimeType(mimeType)));
+//
+//            return ResponseEntity.ok()
+//                    .contentType(MediaType.parseMediaType(
+//                            mimeType != null ? mimeType : "application/octet-stream"))
+//                    .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"attachment\"")
+//                    .body(new ByteArrayResource(fileBytes));
+//
+//        } catch (Exception e) {
+//            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+//                    .body("Error fetching attachment: " + e.getMessage());
+//        }
+//    }
+
 }
 
 
-//    @Autowired
-//    private GmailService gmailService;
-//
-//    /**
-//     * GET endpoint to list all Gmail labels
-//     * URL: http://localhost:8080/api/gmail/labels
-//     */
-//    @GetMapping("/labels")
-//    public ResponseEntity<?> getLabels() {
-//        try {
-//            List<String> labels = gmailService.listLabels();
-//            return ResponseEntity.ok(labels);
-//        } catch (IOException e) {
-//            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-//                    .body("Error fetching labels: " + e.getMessage());
-//        }
-//    }
-//
-//    /**
-//     * GET endpoint to get a specific label by ID
-//     * URL: http://localhost:8080/api/gmail/labels/{labelId}
-//     */
-//    @GetMapping("/labels/{labelId}")
-//    public ResponseEntity<?> getLabel(@PathVariable String labelId) {
-//        try {
-//            Label label = gmailService.getLabel(labelId);
-//            return ResponseEntity.ok(label);
-//        } catch (IOException e) {
-//            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-//                    .body("Error fetching label: " + e.getMessage());
-//        }
-//    }
-//
-//    /**
-//     * GET endpoint to get the count of labels
-//     * URL: http://localhost:8080/api/gmail/labels/count
-//     */
-//    @GetMapping("/labels/count")
-//    public ResponseEntity<?> getLabelCount() {
-//        try {
-//            int count = gmailService.getLabelCount();
-//            return ResponseEntity.ok("Total labels: " + count);
-//        } catch (IOException e) {
-//            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-//                    .body("Error counting labels: " + e.getMessage());
-//        }
-//    }
-//
-//    @GetMapping("/currentUser")
-//    public ResponseEntity<String> getCurrentUser() throws IOException {
-//        String currentUserEmail = gmailService.getCurrentUserEmail();
-//        return ResponseEntity.ok("Logged in as: " + currentUserEmail);
-//    }
-//
-//    @PostMapping("/sendEmail")
-//    public ResponseEntity<?> sendEmail(
-//            @RequestParam String to,
-//            @RequestParam String subject,
-//            @RequestParam String body) {
-//        try {
-//            gmailService.sendEmail(to, subject, body);
-//            return ResponseEntity.status(HttpStatus.OK).body("Email sent successfully to: " + to + "From logged-in user." + gmailService.getCurrentUserEmail());
-//        } catch (Exception e) {
-//            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Failed to send email: " + e.getMessage());
-//        }
-//    }
-//
-//    @GetMapping("/inbox")
-//    public List<String> getInbox() {
-//        try {
-//            return gmailService.getInboxEmails();
-//        } catch (Exception e) {
-//            return List.of("❌ Error fetching inbox: " + e.getMessage());
-//        }
-//    }

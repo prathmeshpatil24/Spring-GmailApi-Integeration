@@ -26,10 +26,19 @@ public class GmailAuthController {
            boolean authorized = gmailConfig.isAuthorized(email);// Check if already authorized
 
            if (authorized) {
+
+               String inboxUrl = "http://localhost:8080/api/gmail/inbox/"+email;
+               System.out.println("Gmail already authorized for " + email);
+               System.out.println("Inbox URL: " + inboxUrl);
+
                return ResponseEntity.ok("✅ Gmail already authorized for " + email +
-                       ". You can use Gmail API for read and write.");
+                       ". You can use Gmail API for read and write." +
+                       "<br/>" + "Inbox URL: <br/>"
+                       + "<a href=\""+inboxUrl+"\">"+inboxUrl+"</a>"
+               );
            }
            String url = gmailConfig.getAuthorizationUrl();
+           System.out.println("Authorization URL: " + url);
            return ResponseEntity.ok("<a href=\"" + url + "\">Authorize Gmail Access</a>");
        } catch (Exception e) {
            throw new RuntimeException(e);

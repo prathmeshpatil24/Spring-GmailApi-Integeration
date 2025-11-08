@@ -4,6 +4,7 @@ import com.gmailIntegeration.Entity.GmailTokenEntity;
 import com.gmailIntegeration.Repo.GmailTokenRepository;
 import com.gmailIntegeration.Utils.JpaDataStoreFactory;
 
+import com.gmailIntegeration.exceptions.UnauthorizedUserException;
 import com.google.api.client.auth.oauth2.BearerToken;
 import com.google.api.client.auth.oauth2.ClientParametersAuthentication;
 import com.google.api.client.auth.oauth2.Credential;
@@ -216,12 +217,15 @@ public class GmailConfig1 {
 
             if (loadedCredential == null || loadedCredential.getAccessToken() == null || loadedCredential.getRefreshToken() == null) {
                 System.out.println("No stored credential found for user: " + userEmail);
-                throw new IllegalStateException("No stored credentials found for user: " + userEmail);
+                System.out.println("Oauth url:- " + getAuthorizationUrl());
+                throw new UnauthorizedUserException("No stored credentials found for user: " + userEmail, getAuthorizationUrl());
             }
 
             return loadedCredential;
 
-        }catch(Exception ex){
+        } catch (UnauthorizedUserException unauthorizedUserException) {
+            throw unauthorizedUserException;
+        } catch(Exception ex){
             throw new RuntimeException("Failed to retrieved stored credential: " + ex.getMessage(), ex);
         }
     }

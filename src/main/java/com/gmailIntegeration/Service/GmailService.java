@@ -67,6 +67,26 @@ public class GmailService {
             throw new Exception(e.getMessage());
         }
     }
+    
+    //getting total mail count
+    public long getTotalMailCount(String email) throws Exception {
+        Gmail gmail = getGmail(email);
+
+        try {
+            ListLabelsResponse labelsResponse = gmail.users().labels().list("me").execute();
+
+            for (Label label:labelsResponse.getLabels()){
+                if("INBOX".equals(label.getName())){
+                    Label totalMailCount = gmail.users().labels().get("me", label.getId()).execute();
+                   return totalMailCount.getMessagesTotal();
+                }
+            }
+            return 0;
+
+        }catch (Exception e){
+            throw new RuntimeException(e.getMessage());
+        }
+    }
 
     public Map<String,Object> currentUserProfile(String userEmail) throws Exception {
         Gmail gmail = getGmail(userEmail);
@@ -218,6 +238,9 @@ public class GmailService {
     public List<Map<String, Object>> getInboxEmailList(String userEmail) throws Exception {
         Gmail gmail = getGmail(userEmail);
         List<Map<String, Object>> emailsList = Collections.synchronizedList(new ArrayList<>());
+
+        //pagination impl
+
         try {
 
             ListMessagesResponse response = gmail.users()
@@ -232,9 +255,10 @@ public class GmailService {
                     .setMaxResults(10L)
                     .execute();
 
-            //System.out.println(response.getNextPageToken());// for pagination
+            System.out.println(response.getNextPageToken());// for pagination
 
             List<Message> messages = response.getMessages();
+
 
             if (messages == null || messages.isEmpty()) {
                 Map<String, Object> noEmailMap = new HashMap<>();
@@ -780,7 +804,7 @@ public class GmailService {
                             public void onSuccess(Message message, HttpHeaders httpHeaders) throws IOException {
                                 Map<String, Object> emailInfo = new HashMap<>();
                                      for (MessagePartHeader header:message.getPayload().getHeaders()){
-                                         emailInfo.put(header.getName(), header.getName());
+                                         emailInfo.put(header.getName(), header.getValue());
                                      }
 
                                 //Add extra useful details (outside headers)
@@ -872,6 +896,93 @@ public class GmailService {
             throw new RuntimeException("Failed to read email: " + e.getMessage());
         }
     }
+
+
+    public List<Map<String, Object>> searchFunction(String userEmail, String searchQuery) throws Exception {
+        Gmail gmail = getGmail(userEmail);
+        List<Map<String, Object>> searchMailResponseList = Collections.synchronizedList(new ArrayList<>());
+
+        try {
+            // Step 1: Search messages based on query
+            ListMessagesResponse listMessagesResponse = gmail.users()
+                    .messages()
+                    .list("me")
+                    .setQ(searchQuery) // Gmail-style query
+                    .execute();
+
+            List<Message> messageList = listMessagesResponse.getMessages();
+
+            // Step 2: Handle empty result
+            if (messageList == null || messageList.isEmpty()) {
+                Map<String, Object> emailInfo = new HashMap<>();
+                emailInfo.put("message", "No data found for query: " + searchQuery);
+                searchMailResponseList.add(emailInfo);
+                return searchMailResponseList;
+            }
+
+            // Step 3: Use BatchRequest to get all message details efficiently
+            BatchRequest batch = gmail.batch();
+
+            for (Message message : messageList) {
+                String messageId = message.getId();
+
+                gmail.users()
+                        .messages()
+                        .get("me", messageId)
+                        .setFormat("metadata")
+                        .queue(batch, new JsonBatchCallback<Message>() {
+                            @Override
+                            public void onFailure(GoogleJsonError e, HttpHeaders responseHeaders) throws IOException {
+                                System.err.println("Failed to fetch message: " + e.getMessage());
+                                Map<String, Object> errorInfo = new HashMap<>();
+                                errorInfo.put("error", true);
+                                errorInfo.put("message", e.getMessage());
+                                searchMailResponseList.add(errorInfo);
+                            }
+
+                            @Override
+                            public void onSuccess(Message msg, HttpHeaders responseHeaders) throws IOException {
+                                Map<String, Object> emailInfo = new HashMap<>();
+                                for (MessagePartHeader header : msg.getPayload().getHeaders()) {
+                                    if (header.getName().equalsIgnoreCase("Subject"))
+                                        emailInfo.put("Subject", header.getValue());
+                                    if (header.getName().equalsIgnoreCase("From"))
+                                        emailInfo.put("From", header.getValue());
+                                    if (header.getName().equalsIgnoreCase("To"))
+                                        emailInfo.put("To", header.getValue());
+                                    if (header.getName().equalsIgnoreCase("Date"))
+                                        emailInfo.put("Date", header.getValue());
+                                }
+
+                                emailInfo.put("MessageId", msg.getId());
+                                emailInfo.put("ThreadId", msg.getThreadId());
+                                emailInfo.put("Snippet", msg.getSnippet());
+                                emailInfo.put("LabelIds", msg.getLabelIds());
+
+                                searchMailResponseList.add(emailInfo);
+                            }
+                        });
+            }
+
+            // Step 4: Execute batch
+            batch.execute();
+
+            //logging
+            searchMailResponseList.forEach((spamMails)->{
+                System.out.println(spamMails);
+                System.out.println("-----------------------------");
+            });
+
+            System.out.println("Total Spam Emails: " + searchMailResponseList.size());
+            System.out.println("-----------------------------------");
+
+            return searchMailResponseList;
+
+        } catch (Exception e) {
+            throw new RuntimeException(e.getMessage());
+        }
+    }
+
 
     // move to trash
     public String moveEmailToTrash(String userEmail, String messageId) throws Exception {

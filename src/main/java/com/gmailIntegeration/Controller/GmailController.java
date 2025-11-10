@@ -191,6 +191,7 @@ public class GmailController {
             //in future if can make category filed dynamic
     ) {
         try {
+
             gmailService.toggleStar(email, messageId, starStatus);
             return ResponseEntity
                     .status(HttpStatus.OK).body(Map.of(
@@ -254,8 +255,8 @@ public class GmailController {
                        @RequestParam String subject,
                        @RequestParam String body) throws Exception {
         try {
-            gmailService.sendEmailWithoutAttachment(email, To,BCC, CC, subject, body);
-            String data = "Email sent successfully! + to: " + To + "from: " + email;
+            gmailService.sendEmailWithoutAttachment(email, To, BCC, CC, subject, body);
+            String data = "Email sent successfully! + to: " + To + " from: " + email;
             return ResponseEntity.status(HttpStatus.OK).body(Map.of(
                     "status", HttpStatus.OK,
                     "data", data
@@ -284,9 +285,9 @@ public class GmailController {
     @PostMapping("/send-email/{userEmail}")
     public ResponseEntity<?> sendEmailWithAttachment(
             @PathVariable String userEmail,
-            @RequestParam String To,
-            @RequestParam(required = false) String Cc,
-            @RequestParam(required = false) String BCC,
+            @RequestParam List<String> To,
+            @RequestParam(required = false) List<String> Cc,
+            @RequestParam(required = false) List<String> Bcc,
             @RequestParam String subject,
             @RequestParam String bodyText,
             @RequestParam(required = false) List<MultipartFile> attachmentFiles) {
@@ -294,8 +295,9 @@ public class GmailController {
         try {
             for (MultipartFile file : attachmentFiles) {
                 System.out.println("File Name: " + file.getOriginalFilename());
+                System.out.println("----------------------");
             }
-            gmailService.sendEmailWithAttachment(userEmail, To, Cc ,BCC, subject, bodyText, attachmentFiles);
+            gmailService.sendEmailWithAttachment(userEmail, To, Cc ,Bcc, subject, bodyText, attachmentFiles);
 
             String data = "Email sent successfully! + to: " + To + "from: " + userEmail;
             return ResponseEntity.status(HttpStatus.OK).body(Map.of(
@@ -481,7 +483,7 @@ public class GmailController {
     }
 
     //read spam mail
-    @GetMapping("/spam/{userEmail}/{messageId}")
+    @GetMapping("/spam/{email}/{messageId}")
     public ResponseEntity<?> readSpamEmail(
             @PathVariable String email,
             @PathVariable String messageId,
@@ -546,7 +548,7 @@ public class GmailController {
     }
 
     //move mail from trash back
-    @GetMapping("/unTrashEmail/{email}/{messageId}")
+    @GetMapping("/unTrash/{email}/{messageId}")
     public ResponseEntity<?> unTrashEmail(@PathVariable String email,
                                           @PathVariable String messageId) {
         try {
@@ -653,6 +655,7 @@ public class GmailController {
 
 
     private String getExtensionFromMimeType(String mimeType) {
+
         if (mimeType == null) {
             return "bin"; // default unknown
         }
@@ -678,46 +681,6 @@ public class GmailController {
                 return "bin";
         }
     }
-
-
-    //1
-//    @GetMapping("/attachments/{email}/{messageId}/{attachmentId}")
-//    public ResponseEntity<?> viewAttachment(@PathVariable String email,
-//                                            @PathVariable String messageId,
-//                                            @PathVariable String attachmentId) {
-//        try {
-//
-//            Gmail gmail = gmailService.getGmail(email);
-//
-//            Message message = gmail.users().messages().get("me", messageId).execute();
-//            MessagePart messagePayload = message.getPayload();
-//            String mimeType = messagePayload.getMimeType();
-//
-//
-//            MessagePartBody attachPart = gmail.users()
-//                    .messages()
-//                    .attachments()
-//                    .get(email, messageId, attachmentId)
-//                    .execute();
-//
-//            // Decode the Base64 data
-//            byte[] fileBytes = Base64.getUrlDecoder().decode(attachPart.getData());
-//
-//            // Optionally detect content type (you can also store it from original part)
-//
-//       //String contentType = Files.probeContentType(Paths.get("dummy." + getExtensionFromMimeType(mimeType)));
-//
-//            return ResponseEntity.ok()
-//                    .contentType(MediaType.parseMediaType(
-//                            mimeType != null ? mimeType : "application/octet-stream"))
-//                    .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"attachment\"")
-//                    .body(new ByteArrayResource(fileBytes));
-//
-//        } catch (Exception e) {
-//            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-//                    .body("Error fetching attachment: " + e.getMessage());
-//        }
-//    }
 
 }
 

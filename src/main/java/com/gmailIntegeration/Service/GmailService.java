@@ -306,15 +306,15 @@ public class GmailService {
             ModifyMessageRequest mod = new ModifyMessageRequest();
 
             if (isStarred) {
-                //If already starred → unstar (remove label)
-                mod.setRemoveLabelIds(Collections.singletonList("STARRED"));
+                //If isStarred is true → star (star label)
+                mod.setAddLabelIds(Collections.singletonList("STARRED"));
 
-                // mod.setRemoveLabelIds(Arrays.asList(category, "STARRED"));// for when category filed will be dynamic, pass it from controller
-                System.out.println("Un-starring email..." + messageId);
+                // mod.setAddLabelIds(Arrays.asList(category, "STARRED"));// for when category filed will be dynamic, pass it from controller
+                System.out.println("starring email... " + messageId);
             } else {
                 //If already unstar → star (add label)
-                mod.setAddLabelIds(Collections.singletonList("STARRED"));
-                System.out.println("Starring email..." + messageId);
+                mod.setRemoveLabelIds(Collections.singletonList("STARRED"));
+                System.out.println("Un-Starring email... " + messageId);
             }
 
             gmail.users()
@@ -403,8 +403,8 @@ public class GmailService {
     //Note:- this method is for sending one mail for sending mail to multi user we need to apply for loop
     public void sendEmailWithoutAttachment(String userEmail,
                           String toEmail,
-                          String Bcc,
-                          String Cc,
+                          String bcc,
+                          String cc,
                           String subject,
                           String bodyText) throws Exception {
 
@@ -413,21 +413,22 @@ public class GmailService {
 //          Properties properties = new Properties();
            //multiple recipients (To, Cc, Bcc) this also we can do
 
-           if (Bcc== null && Bcc.isEmpty()){
-               Bcc = "";
+           StringBuilder rawEmailBuilder = new StringBuilder();
+           rawEmailBuilder.append("From: ").append(userEmail).append("\r\n");
+           rawEmailBuilder.append("To: ").append(toEmail).append("\r\n");
+
+           if (cc != null && !cc.isBlank()) {
+               rawEmailBuilder.append("Cc: ").append(cc).append("\r\n");
            }
-           if (Cc == null && Cc.isEmpty()){
-               Cc ="";
+           if (bcc != null && !bcc.isBlank()) {
+               rawEmailBuilder.append("Bcc: ").append(bcc).append("\r\n");
            }
 
-           String rawEmail = "From: " + userEmail + "\r\n" +
-                   "To: " + toEmail + "\r\n" +
-                   // here we can add Cc and Bcc if needed
-                   "Bcc: " + Bcc + "\r\n" +
-                   "Cc: " + Cc + "\r\n" +
-                   "Subject: " + subject + "\r\n" +
-                   "Content-Type: text/plain; charset=utf-8\r\n\r\n" +
-                   bodyText;
+           rawEmailBuilder.append("Subject: ").append(subject).append("\r\n");
+           rawEmailBuilder.append("Content-Type: text/plain; charset=utf-8\r\n\r\n");
+           rawEmailBuilder.append(bodyText);
+
+           String rawEmail = rawEmailBuilder.toString();
 
            Message message = new Message();
 
@@ -439,14 +440,15 @@ public class GmailService {
 
            gmail.users().messages().send("me", message).execute();//actual API call that sends our email through Gmail’s servers.
        } catch (Exception e) {
-           throw new RuntimeException(e);
+           throw new RuntimeException("Failed to send email:- " + e.getMessage(), e);
        }
     }
 
+    //here we can send  same mail to multiple mailIDs
     public void sendEmailWithAttachment(String userEmail,
-                                        String toEmail,
-                                        String CC,
-                                        String BCC,
+                                        List<String> toEmails,
+                                        List<String> CC,
+                                        List<String> BCC,
                                         String subject,
                                         String bodyText,
                                         List<MultipartFile> attachmentFiles) throws Exception {
@@ -460,15 +462,28 @@ public class GmailService {
            MimeMessage email = new MimeMessage(session);
 
            email.setFrom(new InternetAddress(userEmail));
-           email.addRecipient(jakarta.mail.Message.RecipientType.TO, new InternetAddress(toEmail));
+           for (String toEmail: toEmails){
+               System.out.println("sending mail at one time to multiple mailId:- " + toEmail);
+               email.addRecipient(jakarta.mail.Message.RecipientType.TO, new InternetAddress(toEmail));
+           }
+           System.out.println("-----------------------");
+
 //           // Optional: add CC recipients
            if (CC != null && !CC.isEmpty()) {
-               email.addRecipient(jakarta.mail.Message.RecipientType.CC, new InternetAddress(CC));
+               for (String cc: CC){
+                   System.out.println("CC mail list:- " + cc);
+               email.addRecipient(jakarta.mail.Message.RecipientType.CC, new InternetAddress(cc));
+               }
+               System.out.println("-----------------------");
            }
 
 //           // Optional: add BCC recipients
            if (BCC != null && !BCC.isEmpty()) {
-               email.addRecipient(jakarta.mail.Message.RecipientType.BCC, new InternetAddress(BCC));
+               for (String bcc: BCC){
+                   System.out.println("BCC mail list:- " + bcc);
+               email.addRecipient(jakarta.mail.Message.RecipientType.BCC, new InternetAddress(bcc));
+               }
+               System.out.println("------------------------");
            }
 
            email.setSubject(subject, "UTF-8");

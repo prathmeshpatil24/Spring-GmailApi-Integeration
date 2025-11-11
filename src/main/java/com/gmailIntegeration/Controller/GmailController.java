@@ -4,6 +4,7 @@ package com.gmailIntegeration.Controller;
 import com.gmailIntegeration.Service.GmailService;
 import com.gmailIntegeration.exceptions.UnauthorizedUserException;
 import com.google.api.services.gmail.Gmail;
+import com.google.api.services.gmail.model.Message;
 import com.google.api.services.gmail.model.MessagePartBody;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.*;
@@ -607,7 +608,7 @@ public class GmailController {
     }
 
 
-    @GetMapping("/{email}/{messageId}/{attachmentId}")
+    @GetMapping("/{email}/{messageId}/{attachmentId}/view")
     public ResponseEntity<?> viewAttachment(
             @PathVariable String email,
             @PathVariable String messageId,
@@ -638,8 +639,67 @@ public class GmailController {
             }
 
             //Extract extension from MIME
-            String extension = detectedMimeType.split("/")[1];
-            String filename = "attachment." + extension;
+            String extension = "bin";
+            if (detectedMimeType.contains("/")) {
+                extension = detectedMimeType.split("/")[1];
+            }
+
+            //getting the original name for file
+            Message message = gmail.users().messages().get("me", messageId).execute();
+            String filename = message.getPayload().getFilename() + extension;
+
+            //Return the correct content type and inline display
+            return ResponseEntity.ok()
+                    .contentType(MediaType.parseMediaType(detectedMimeType))
+                    .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + filename + "\"") //for download use "attachment; filename=..."
+                    .body(new ByteArrayResource(fileBytes));
+
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Error fetching attachment: " + e.getMessage());
+        }
+    }
+
+
+    @GetMapping("/{email}/{messageId}/{attachmentId}/download")
+    public ResponseEntity<?> downloadAttachment(
+            @PathVariable String email,
+            @PathVariable String messageId,
+            @PathVariable String attachmentId) {
+        try {
+
+            Gmail gmail = gmailService.getGmail(email);
+
+            // Fetch the attachment
+            MessagePartBody attachPart = gmail.users()
+                    .messages()
+                    .attachments()
+                    .get(email, messageId, attachmentId)
+                    .execute();
+
+            // Decode base64 data
+            byte[] fileBytes = Base64.getUrlDecoder().decode(attachPart.getData());
+
+            //Try to detect the real MIME type
+            String detectedMimeType = null;
+            try {
+                detectedMimeType = URLConnection.guessContentTypeFromStream(new ByteArrayInputStream(fileBytes));
+            } catch (Exception ignored) {}
+
+            // Fallback to default
+            if(detectedMimeType == null) {
+                detectedMimeType = "application/octet-stream";
+            }
+
+            //Extract extension from MIME
+            String extension = "bin";
+            if (detectedMimeType.contains("/")) {
+                extension = detectedMimeType.split("/")[1];
+            }
+
+            //getting the original name for file
+            Message message = gmail.users().messages().get("me", messageId).execute();
+            String filename = message.getPayload().getFilename() + extension;
 
             //Return the correct content type and inline display
             return ResponseEntity.ok()

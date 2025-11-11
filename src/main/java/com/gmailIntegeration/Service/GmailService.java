@@ -2,6 +2,7 @@ package com.gmailIntegeration.Service;
 
 import com.gmailIntegeration.Configuration.GmailConfig1;
 
+import com.gmailIntegeration.Utils.MailSortUtils;
 import com.gmailIntegeration.exceptions.UnauthorizedUserException;
 import com.google.api.client.auth.oauth2.Credential;
 import com.google.api.client.googleapis.batch.BatchRequest;
@@ -28,6 +29,8 @@ import java.nio.charset.StandardCharsets;
 
 import java.security.GeneralSecurityException;
 
+import java.text.SimpleDateFormat;
+import java.time.LocalDate;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -35,21 +38,24 @@ import java.util.stream.Collectors;
 public class GmailService {
 
     private final GmailConfig1 gmailConfig;
+    private final MailSortUtils mailSortUtils;
 
-    public GmailService(GmailConfig1 gmailConfig) {
+    public GmailService(GmailConfig1 gmailConfig,
+                        MailSortUtils mailSortUtils) {
         this.gmailConfig = gmailConfig;
+        this.mailSortUtils = mailSortUtils;
     }
 
     // helper method to create Gmail instance
     public Gmail getGmail(String userEmail) throws Exception {
-        try{
+        try {
             Credential credential = gmailConfig.getStoredCredential(userEmail);
             if (credential == null) {
-                String authorizationUrl= gmailConfig.getAuthorizationUrl();
-                System.out.println("authorized url:- " +  authorizationUrl);
+                String authorizationUrl = gmailConfig.getAuthorizationUrl();
+                System.out.println("authorized url:- " + authorizationUrl);
                 throw new UnauthorizedUserException("No credential found for user: " + userEmail,
                         "Please authenticate using the following URL: " +
-                        authorizationUrl);
+                                authorizationUrl);
             }
             return new Gmail.Builder(
                     GoogleNetHttpTransport.newTrustedTransport(),
@@ -67,7 +73,7 @@ public class GmailService {
             throw new Exception(e.getMessage());
         }
     }
-    
+
     //getting total mail count
     public long getTotalMailCount(String email) throws Exception {
         Gmail gmail = getGmail(email);
@@ -75,36 +81,36 @@ public class GmailService {
         try {
             ListLabelsResponse labelsResponse = gmail.users().labels().list("me").execute();
 
-            for (Label label:labelsResponse.getLabels()){
-                if("INBOX".equals(label.getName())){
+            for (Label label : labelsResponse.getLabels()) {
+                if ("INBOX".equals(label.getName())) {
                     Label totalMailCount = gmail.users().labels().get("me", label.getId()).execute();
-                   return totalMailCount.getMessagesTotal();
+                    return totalMailCount.getMessagesTotal();
                 }
             }
             return 0;
 
-        }catch (Exception e){
+        } catch (Exception e) {
             throw new RuntimeException(e.getMessage());
         }
     }
 
-    public Map<String,Object> currentUserProfile(String userEmail) throws Exception {
+    public Map<String, Object> currentUserProfile(String userEmail) throws Exception {
         Gmail gmail = getGmail(userEmail);
 
-        Map<String,Object> profileInfo = new HashMap<>();
+        Map<String, Object> profileInfo = new HashMap<>();
         try {
             Profile profile = gmail.users().getProfile("me").execute();
 
             for (Map.Entry<String, Object> entry : profile.entrySet()) {
                 String key = entry.getKey();
                 Object value = entry.getValue();
-                profileInfo.put(key,value);
+                profileInfo.put(key, value);
             }
 
             //logging profile info
             System.out.println("User Profile Information:");
             profileInfo.forEach(
-                    (k,v) -> System.out.println(k + ": " + v)
+                    (k, v) -> System.out.println(k + ": " + v)
             );
 
             return profileInfo;
@@ -115,17 +121,17 @@ public class GmailService {
         } catch (IOException e) {
             throw new IOException("Failed to fetch user profile: " + e.getMessage(), e);
 
-        }catch (Exception e) {
+        } catch (Exception e) {
             throw new RuntimeException("Unexpected error while fetching user profile: " + e.getMessage(), e);
         }
     }
 
     //listing all labels in Gmail account
-    public Map<String,String> labelList(String userEmail) throws Exception {
+    public Map<String, String> labelList(String userEmail) throws Exception {
 
         Gmail gmail = getGmail(userEmail);
 
-        Map<String,String> labelInfo = new HashMap<>();
+        Map<String, String> labelInfo = new HashMap<>();
         try {
 
             ListLabelsResponse response = gmail.users()
@@ -134,11 +140,11 @@ public class GmailService {
                     .execute();
 
             for (Label label : response.getLabels()) {
-                labelInfo.put(label.getId(),label.getName());
+                labelInfo.put(label.getId(), label.getName());
             }
             //logging label info
             labelInfo.forEach(
-                    (k,v) ->
+                    (k, v) ->
                             System.out.println("Label ID: " + k + " | Label Name: " + v)
             );
 
@@ -174,7 +180,7 @@ public class GmailService {
             BatchRequest batch = gmail.batch();
             //Creates an empty batch container tied to the Gmail client.
 
-            for(Message msg : messages) {
+            for (Message msg : messages) {
                 gmail.users()
                         .messages()
                         .get("me", msg.getId())
@@ -189,7 +195,7 @@ public class GmailService {
                                 Map<String, Object> emailInfo = new HashMap<>();
 
                                 for (MessagePartHeader header : message.getPayload().getHeaders()) {
-                                     //header.getName() gives the key like Subject, From, To, Date,  etc.
+                                    //header.getName() gives the key like Subject, From, To, Date,  etc.
                                     //header.getValue()  gets the value of the header
                                     emailInfo.put(header.getName(), header.getValue());
                                 }
@@ -219,6 +225,8 @@ public class GmailService {
 
             // Step 3: Execute all requests in one batch call
             batch.execute();
+
+//            mailSortUtils.sortByDate(emailsList,true); // true = descending (latest first)
 
             // Step 4: Print summary
             emailsList.forEach(email -> {
@@ -311,8 +319,14 @@ public class GmailService {
             }
             batch.execute();
 
+            //sorting function
+            mailSortUtils.sortByDate(emailsList,true); //true = descending latest mail will come first
+
+            //logging/debugging
             emailsList.forEach(email -> {
-                System.out.println(email);
+                email.forEach((key,value)->{
+                    System.out.println(key + "-" + value);
+                });
                 System.out.println("-----------------------------------");
             });
             return emailsList;
@@ -325,7 +339,7 @@ public class GmailService {
     public void toggleStar(String userEmail, String messageId, boolean isStarred) throws Exception {
         Gmail gmail = getGmail(userEmail);
 
-        try{
+        try {
 
             ModifyMessageRequest mod = new ModifyMessageRequest();
 
@@ -354,9 +368,9 @@ public class GmailService {
     }
 
     //listing starred emails
-    public List<Map<String,Object>> getStarredEmailList(String userEmail) throws Exception{
+    public List<Map<String, Object>> getStarredEmailList(String userEmail) throws Exception {
         Gmail gmail = getGmail(userEmail);
-        ArrayList<Map<String,Object>>staredEmailList = new ArrayList<>();
+        ArrayList<Map<String, Object>> staredEmailList = new ArrayList<>();
 
         try {
 
@@ -372,8 +386,8 @@ public class GmailService {
             if (starredMessages == null || starredMessages.isEmpty()) {
                 //logging
                 System.out.println("No starred emails found.");
-                Map<String,Object> noStarredEmailMap = new HashMap<>();
-                noStarredEmailMap.put("message","No starred emails found.");
+                Map<String, Object> noStarredEmailMap = new HashMap<>();
+                noStarredEmailMap.put("message", "No starred emails found.");
                 staredEmailList.add(noStarredEmailMap);
 
                 return staredEmailList;
@@ -395,7 +409,7 @@ public class GmailService {
 
                 //Iterates through all message headers and extracts specific ones
                 for (MessagePartHeader header : message.getPayload().getHeaders()) {
-                    emailInfo.put(header.getName(),header.getValue());
+                    emailInfo.put(header.getName(), header.getValue());
                 }
 
                 //Add extra useful details (outside headers)
@@ -409,7 +423,7 @@ public class GmailService {
 
             staredEmailList.add(emailInfo);
             //logging
-            for (Map<String,Object> starredEmail:staredEmailList){
+            for (Map<String, Object> starredEmail : staredEmailList) {
                 System.out.println(starredEmail);
                 System.out.println("----------------------------------");
             }
@@ -426,46 +440,46 @@ public class GmailService {
     //sending email without attachment
     //Note:- this method is for sending one mail for sending mail to multi user we need to apply for loop
     public void sendEmailWithoutAttachment(String userEmail,
-                          String toEmail,
-                          String bcc,
-                          String cc,
-                          String subject,
-                          String bodyText) throws Exception {
+                                           String toEmail,
+                                           String bcc,
+                                           String cc,
+                                           String subject,
+                                           String bodyText) throws Exception {
 
-       try {
-           Gmail gmail = getGmail(userEmail);
+        try {
+            Gmail gmail = getGmail(userEmail);
 //          Properties properties = new Properties();
-           //multiple recipients (To, Cc, Bcc) this also we can do
+            //multiple recipients (To, Cc, Bcc) this also we can do
 
-           StringBuilder rawEmailBuilder = new StringBuilder();
-           rawEmailBuilder.append("From: ").append(userEmail).append("\r\n");
-           rawEmailBuilder.append("To: ").append(toEmail).append("\r\n");
+            StringBuilder rawEmailBuilder = new StringBuilder();
+            rawEmailBuilder.append("From: ").append(userEmail).append("\r\n");
+            rawEmailBuilder.append("To: ").append(toEmail).append("\r\n");
 
-           if (cc != null && !cc.isBlank()) {
-               rawEmailBuilder.append("Cc: ").append(cc).append("\r\n");
-           }
-           if (bcc != null && !bcc.isBlank()) {
-               rawEmailBuilder.append("Bcc: ").append(bcc).append("\r\n");
-           }
+            if (cc != null && !cc.isBlank()) {
+                rawEmailBuilder.append("Cc: ").append(cc).append("\r\n");
+            }
+            if (bcc != null && !bcc.isBlank()) {
+                rawEmailBuilder.append("Bcc: ").append(bcc).append("\r\n");
+            }
 
-           rawEmailBuilder.append("Subject: ").append(subject).append("\r\n");
-           rawEmailBuilder.append("Content-Type: text/plain; charset=utf-8\r\n\r\n");
-           rawEmailBuilder.append(bodyText);
+            rawEmailBuilder.append("Subject: ").append(subject).append("\r\n");
+            rawEmailBuilder.append("Content-Type: text/plain; charset=utf-8\r\n\r\n");
+            rawEmailBuilder.append(bodyText);
 
-           String rawEmail = rawEmailBuilder.toString();
+            String rawEmail = rawEmailBuilder.toString();
 
-           Message message = new Message();
+            Message message = new Message();
 
-           //Gmail API requires the message content to be Base64 URL-safe encoded (as per RFC 4648).
-           //This encoding ensures that the email content can be safely transmitted over protocols that may not handle binary data correctly.
-           //This ensures that special characters (+, /, etc.) don’t break when transmitted over HTTP.
-           message.setRaw(Base64.getUrlEncoder()
-                   .encodeToString(rawEmail.getBytes(StandardCharsets.UTF_8)));
+            //Gmail API requires the message content to be Base64 URL-safe encoded (as per RFC 4648).
+            //This encoding ensures that the email content can be safely transmitted over protocols that may not handle binary data correctly.
+            //This ensures that special characters (+, /, etc.) don’t break when transmitted over HTTP.
+            message.setRaw(Base64.getUrlEncoder()
+                    .encodeToString(rawEmail.getBytes(StandardCharsets.UTF_8)));
 
-           gmail.users().messages().send("me", message).execute();//actual API call that sends our email through Gmail’s servers.
-       } catch (Exception e) {
-           throw new RuntimeException("Failed to send email:- " + e.getMessage(), e);
-       }
+            gmail.users().messages().send("me", message).execute();//actual API call that sends our email through Gmail’s servers.
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to send email:- " + e.getMessage(), e);
+        }
     }
 
     //here we can send  same mail to multiple mailIDs
@@ -479,110 +493,110 @@ public class GmailService {
 
         Gmail gmail = getGmail(userEmail);
 
-       try {
-           Properties props = new Properties();
-           Session session = Session.getDefaultInstance(props, null);
+        try {
+            Properties props = new Properties();
+            Session session = Session.getDefaultInstance(props, null);
 
-           MimeMessage email = new MimeMessage(session);
+            MimeMessage email = new MimeMessage(session);
 
-           email.setFrom(new InternetAddress(userEmail));
-           for (String toEmail: toEmails){
-               System.out.println("sending mail at one time to multiple mailId:- " + toEmail);
-               email.addRecipient(jakarta.mail.Message.RecipientType.TO, new InternetAddress(toEmail));
-           }
-           System.out.println("-----------------------");
+            email.setFrom(new InternetAddress(userEmail));
+            for (String toEmail : toEmails) {
+                System.out.println("sending mail at one time to multiple mailId:- " + toEmail);
+                email.addRecipient(jakarta.mail.Message.RecipientType.TO, new InternetAddress(toEmail));
+            }
+            System.out.println("-----------------------");
 
 //           // Optional: add CC recipients
-           if (CC != null && !CC.isEmpty()) {
-               for (String cc: CC){
-                   System.out.println("CC mail list:- " + cc);
-               email.addRecipient(jakarta.mail.Message.RecipientType.CC, new InternetAddress(cc));
-               }
-               System.out.println("-----------------------");
-           }
+            if (CC != null && !CC.isEmpty()) {
+                for (String cc : CC) {
+                    System.out.println("CC mail list:- " + cc);
+                    email.addRecipient(jakarta.mail.Message.RecipientType.CC, new InternetAddress(cc));
+                }
+                System.out.println("-----------------------");
+            }
 
 //           // Optional: add BCC recipients
-           if (BCC != null && !BCC.isEmpty()) {
-               for (String bcc: BCC){
-                   System.out.println("BCC mail list:- " + bcc);
-               email.addRecipient(jakarta.mail.Message.RecipientType.BCC, new InternetAddress(bcc));
-               }
-               System.out.println("------------------------");
-           }
+            if (BCC != null && !BCC.isEmpty()) {
+                for (String bcc : BCC) {
+                    System.out.println("BCC mail list:- " + bcc);
+                    email.addRecipient(jakarta.mail.Message.RecipientType.BCC, new InternetAddress(bcc));
+                }
+                System.out.println("------------------------");
+            }
 
-           email.setSubject(subject, "UTF-8");
+            email.setSubject(subject, "UTF-8");
 
-           MimeBodyPart textPart = new MimeBodyPart();
-           textPart.setText(bodyText, "UTF-8");
+            MimeBodyPart textPart = new MimeBodyPart();
+            textPart.setText(bodyText, "UTF-8");
 
-           MimeMultipart multipart = new MimeMultipart();
-           multipart.addBodyPart(textPart);
+            MimeMultipart multipart = new MimeMultipart();
+            multipart.addBodyPart(textPart);
 
-           //Handle optional MultipartFile safely
-           if (attachmentFiles!=null && !attachmentFiles.isEmpty()){
-               for (MultipartFile attachmentFile:attachmentFiles){
-                   try {
-                       MimeBodyPart attachmentPart = new MimeBodyPart();
+            //Handle optional MultipartFile safely
+            if (attachmentFiles != null && !attachmentFiles.isEmpty()) {
+                for (MultipartFile attachmentFile : attachmentFiles) {
+                    try {
+                        MimeBodyPart attachmentPart = new MimeBodyPart();
 
-                       // You can directly use MultipartFile’s input stream and content type
-                       DataSource source = new ByteArrayDataSource(
-                               attachmentFile.getInputStream(),
-                               attachmentFile.getContentType() != null
-                                       ? attachmentFile.getContentType()
-                                       : "application/octet-stream"
-                       );
-                       attachmentPart.setDataHandler(new DataHandler(source));
-                       attachmentPart.setFileName(
-                               MimeUtility.encodeText(attachmentFile.getOriginalFilename())
-                       );
-                       multipart.addBodyPart(attachmentPart);
-                   } catch (Exception e) {
-                       System.err.println("Failed to attach file: " + e.getMessage());
-                   }
-               }
-               System.out.println("Attachment files list is null or empty.");
-           }else {
-               System.out.println("No attachment provided. Sending email without attachment.");
-           }
+                        // You can directly use MultipartFile’s input stream and content type
+                        DataSource source = new ByteArrayDataSource(
+                                attachmentFile.getInputStream(),
+                                attachmentFile.getContentType() != null
+                                        ? attachmentFile.getContentType()
+                                        : "application/octet-stream"
+                        );
+                        attachmentPart.setDataHandler(new DataHandler(source));
+                        attachmentPart.setFileName(
+                                MimeUtility.encodeText(attachmentFile.getOriginalFilename())
+                        );
+                        multipart.addBodyPart(attachmentPart);
+                    } catch (Exception e) {
+                        System.err.println("Failed to attach file: " + e.getMessage());
+                    }
+                }
+                System.out.println("Attachment files list is null or empty.");
+            } else {
+                System.out.println("No attachment provided. Sending email without attachment.");
+            }
 
-           email.setContent(multipart);
+            email.setContent(multipart);
 
-           //--- Encode message ---
-           ByteArrayOutputStream buffer = new ByteArrayOutputStream();
-           email.writeTo(buffer);
+            //--- Encode message ---
+            ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+            email.writeTo(buffer);
 
-           String encodedEmail = Base64.getUrlEncoder()
-                   .encodeToString(buffer.toByteArray());
+            String encodedEmail = Base64.getUrlEncoder()
+                    .encodeToString(buffer.toByteArray());
 
-           Message message = new Message();
-           message.setRaw(encodedEmail);
+            Message message = new Message();
+            message.setRaw(encodedEmail);
 
-           // --- Send email via Gmail API ---
-           Message sentMessage = gmail.users()
-                   .messages()
-                   .send("me", message)
-                   .execute();
+            // --- Send email via Gmail API ---
+            Message sentMessage = gmail.users()
+                    .messages()
+                    .send("me", message)
+                    .execute();
 
-           if (sentMessage!=null && sentMessage.getId()!=null){
-               if (attachmentFiles!=null && !attachmentFiles.isEmpty()){
-                   String filesName = attachmentFiles.stream()
-                           .map(MultipartFile::getOriginalFilename)
-                           .collect(Collectors.joining(","));
-                     System.out.println("Email sent successfully with attachments: " + filesName);
-               }else {
-                   System.out.println("Email sent successfully without attachments.");
-               }
-           }else {
-               System.err.println("Email sending failed: Gmail API returned null response.");
-           }
+            if (sentMessage != null && sentMessage.getId() != null) {
+                if (attachmentFiles != null && !attachmentFiles.isEmpty()) {
+                    String filesName = attachmentFiles.stream()
+                            .map(MultipartFile::getOriginalFilename)
+                            .collect(Collectors.joining(","));
+                    System.out.println("Email sent successfully with attachments: " + filesName);
+                } else {
+                    System.out.println("Email sent successfully without attachments.");
+                }
+            } else {
+                System.err.println("Email sending failed: Gmail API returned null response.");
+            }
 
-       } catch (Exception e) {
-           throw new RuntimeException("Error while sending email: " + e.getMessage());
-       }
+        } catch (Exception e) {
+            throw new RuntimeException("Error while sending email: " + e.getMessage());
+        }
     }
 
     //listing sent emails
-    public List<Map<String, Object>> sentEmailList(String userEmail) throws Exception{
+    public List<Map<String, Object>> sentEmailList(String userEmail) throws Exception {
         Gmail gmail = getGmail(userEmail);
 
         //wraps your ArrayList in a thread-safe wrapper, meaning:
@@ -602,7 +616,7 @@ public class GmailService {
             List<Message> messages = listOfSentEmails.getMessages();
 
 
-            if (messages == null || messages.isEmpty()){
+            if (messages == null || messages.isEmpty()) {
                 Map<String, Object> noEmailMap = new HashMap<>();
                 noEmailMap.put("message", "No emails found in inbox.");
                 emailsList.add(noEmailMap);
@@ -659,13 +673,13 @@ public class GmailService {
 
             return emailsList;
 
-        }catch (Exception ex){
+        } catch (Exception ex) {
             throw new RuntimeException("Failed to fetch sent emails: " + ex.getMessage(), ex);
         }
     }
 
     //listing draft emails
-    public List<Map<String,Object>> draftEmailList(String userEmails) throws Exception{
+    public List<Map<String, Object>> draftEmailList(String userEmails) throws Exception {
         Gmail gmail = getGmail(userEmails);
 
         List<Map<String, Object>> draftMailList = Collections
@@ -678,12 +692,12 @@ public class GmailService {
                     .setMaxResults(10L)
                     .execute();
 
-            if (listDraftsResponse == null || listDraftsResponse.isEmpty()){
+            if (listDraftsResponse == null || listDraftsResponse.isEmpty()) {
 
-                Map<String,Object> noDraftEmailMap = new HashMap<>();
+                Map<String, Object> noDraftEmailMap = new HashMap<>();
                 System.out.println("No draft emails found.");
 
-                noDraftEmailMap.put("message","No draft emails found.");
+                noDraftEmailMap.put("message", "No draft emails found.");
                 draftMailList.add(noDraftEmailMap);
 
                 return draftMailList;
@@ -694,7 +708,7 @@ public class GmailService {
 
             for (Draft draft : listDraftsResponse.getDrafts()) {
                 String draftId = draft.getId();
-                 gmail.users()
+                gmail.users()
                         .drafts()
                         .get("me", draftId)
                         .setFormat("metadata")
@@ -746,13 +760,13 @@ public class GmailService {
 
             return draftMailList;
 
-        }catch (Exception ex){
+        } catch (Exception ex) {
             throw new RuntimeException("Failed to fetch draft emails: " + ex.getMessage(), ex);
         }
     }
 
     //listing spam emails
-    public List<Map<String, Object>> spamEmailList(String userEmail) throws Exception{
+    public List<Map<String, Object>> spamEmailList(String userEmail) throws Exception {
         Gmail gmail = getGmail(userEmail);
 
         List<Map<String, Object>> spamMailList = Collections
@@ -773,7 +787,7 @@ public class GmailService {
             List<Message> listOfSpamMessages = listMessagesResponse.getMessages();
 
             if (listOfSpamMessages == null || listOfSpamMessages.isEmpty()) {
-                Map<String,Object> noSpamInfo = new HashMap<>();
+                Map<String, Object> noSpamInfo = new HashMap<>();
                 System.out.println("No spam emails in Spam");
                 noSpamInfo.put("message", "NO spam emails in Spam");
 
@@ -782,7 +796,7 @@ public class GmailService {
             }
 
             BatchRequest batch = gmail.batch();
-            for (Message message:listOfSpamMessages){
+            for (Message message : listOfSpamMessages) {
                 String messageId = message.getId();  //this is your unique ID
                 gmail.users()
                         .messages()
@@ -803,9 +817,9 @@ public class GmailService {
                             @Override
                             public void onSuccess(Message message, HttpHeaders httpHeaders) throws IOException {
                                 Map<String, Object> emailInfo = new HashMap<>();
-                                     for (MessagePartHeader header:message.getPayload().getHeaders()){
-                                         emailInfo.put(header.getName(), header.getValue());
-                                     }
+                                for (MessagePartHeader header : message.getPayload().getHeaders()) {
+                                    emailInfo.put(header.getName(), header.getValue());
+                                }
 
                                 //Add extra useful details (outside headers)
                                 emailInfo.put("MessageId", message.getId());
@@ -824,8 +838,8 @@ public class GmailService {
 
             batch.execute();
 
-           //logging
-            spamMailList.forEach((spamMails)->{
+            //logging
+            spamMailList.forEach((spamMails) -> {
                 System.out.println(spamMails);
                 System.out.println("-----------------------------");
             });
@@ -840,13 +854,13 @@ public class GmailService {
         }
     }
 
-     //fetching and displaying draft email body without attachment
-    public Map<String,Object> readAnyEmailBody(String userEmail, String messageId, boolean isDraft) throws Exception {
+    //fetching and displaying draft email body without attachment
+    public Map<String, Object> readAnyEmailBody(String userEmail, String messageId, boolean isDraft) throws Exception {
         Gmail gmail = getGmail(userEmail);
         try {
 
             Message message;
-            if (isDraft){
+            if (isDraft) {
                 // Get full draft message
                 Draft draft = gmail.users()
                         .drafts()
@@ -855,7 +869,7 @@ public class GmailService {
 
                 message = draft.getMessage();
 
-            }else {
+            } else {
                 message = gmail.users()
                         .messages()
                         .get("me", messageId)
@@ -878,16 +892,16 @@ public class GmailService {
             // Extract body
             String body = extractBodyFromMessage(message);
 
-            Map<String,Object>emailDetails = new HashMap<>();
+            Map<String, Object> emailDetails = new HashMap<>();
             System.out.println("📧 To: " + to);
             System.out.println("📝 Subject: " + subject);
             System.out.println("📅 Date: " + dateTime);
             System.out.println("📨 Body:\n" + body);
 
-            emailDetails.put("to",to);
-            emailDetails.put("subject",subject);
-            emailDetails.put("dateTime",dateTime);
-            emailDetails.put("body",body);
+            emailDetails.put("to", to);
+            emailDetails.put("subject", subject);
+            emailDetails.put("dateTime", dateTime);
+            emailDetails.put("body", body);
 
 
             return emailDetails;
@@ -898,16 +912,45 @@ public class GmailService {
     }
 
 
-    public List<Map<String, Object>> searchFunction(String userEmail, String searchQuery) throws Exception {
+    public List<Map<String, Object>> searchFunction(String userEmail,
+                                                    String searchQuery,
+                                                    String from,
+                                                    String to,
+                                                    String subject,
+                                                    LocalDate after,
+                                                    LocalDate before) throws Exception{
         Gmail gmail = getGmail(userEmail);
         List<Map<String, Object>> searchMailResponseList = Collections.synchronizedList(new ArrayList<>());
+
+        StringBuilder gmailQuery = new StringBuilder();
+
+        // Add different filters dynamically
+        if (searchQuery != null && !searchQuery.isEmpty()) {
+            gmailQuery.append(searchQuery).append(" ");
+        }
+        if (from != null && !from.isEmpty()) {
+            gmailQuery.append("from:").append(from).append(" ");
+        }
+        if (to != null && !to.isEmpty()) {
+            gmailQuery.append("to:").append(to).append(" ");
+        }
+        if (subject != null && !subject.isEmpty()) {
+            gmailQuery.append("subject:").append(subject).append(" ");
+        }
+        if (after != null) {
+            gmailQuery.append("after:").append(after.toString().replace("-", "/")).append(" ");
+        }
+        if (before != null) {
+            gmailQuery.append("before:").append(before.toString().replace("-", "/")).append(" ");
+        }
+        System.out.println("🔍 Gmail Search Query: " + gmailQuery);
 
         try {
             // Step 1: Search messages based on query
             ListMessagesResponse listMessagesResponse = gmail.users()
                     .messages()
                     .list("me")
-                    .setQ(searchQuery) // Gmail-style query
+                    .setQ(gmailQuery.toString().trim())
                     .execute();
 
             List<Message> messageList = listMessagesResponse.getMessages();
@@ -944,14 +987,7 @@ public class GmailService {
                             public void onSuccess(Message msg, HttpHeaders responseHeaders) throws IOException {
                                 Map<String, Object> emailInfo = new HashMap<>();
                                 for (MessagePartHeader header : msg.getPayload().getHeaders()) {
-                                    if (header.getName().equalsIgnoreCase("Subject"))
-                                        emailInfo.put("Subject", header.getValue());
-                                    if (header.getName().equalsIgnoreCase("From"))
-                                        emailInfo.put("From", header.getValue());
-                                    if (header.getName().equalsIgnoreCase("To"))
-                                        emailInfo.put("To", header.getValue());
-                                    if (header.getName().equalsIgnoreCase("Date"))
-                                        emailInfo.put("Date", header.getValue());
+                                    emailInfo.put(header.getName(), header.getValue());
                                 }
 
                                 emailInfo.put("MessageId", msg.getId());
@@ -967,9 +1003,13 @@ public class GmailService {
             // Step 4: Execute batch
             batch.execute();
 
+
+
             //logging
-            searchMailResponseList.forEach((spamMails)->{
-                System.out.println(spamMails);
+            searchMailResponseList.forEach((spamMails) -> {
+                spamMails.forEach((key,value)->{
+                    System.out.println(key + ":" + value);
+                });
                 System.out.println("-----------------------------");
             });
 
@@ -1022,10 +1062,10 @@ public class GmailService {
             //  Verify that the message is in TRASH
             if (message.getLabelIds() != null && !message.getLabelIds().contains("TRASH")) {
 
-                    String restoredLabels = String.join(", ", message.getLabelIds());
-                    System.out.println(" Email successfully moved back to " + restoredLabels);
+                String restoredLabels = String.join(", ", message.getLabelIds());
+                System.out.println(" Email successfully moved back to " + restoredLabels);
 
-                    return " Email successfully moved back to " + restoredLabels;
+                return " Email successfully moved back to " + restoredLabels;
 
             } else {
                 System.out.println("Email not marked as Trash. Please check Gmail labels.");
@@ -1047,15 +1087,15 @@ public class GmailService {
 
         Gmail gmail = getGmail(userEmail);
 
-            //messages():- Access the messages sub-resource (emails in that account)
-            //delete("me", messageId):- Deletes the specified email message from the user’s mailbox.
-            //Note:
-            //If the email is in Trash or Spam, Gmail may delete it permanently.
-            //If it’s in the Inbox, Gmail moves it to Trash by default.
-             gmail.users()
-                    .messages()
-                    .delete("me", messageId)
-                    .execute();
+        //messages():- Access the messages sub-resource (emails in that account)
+        //delete("me", messageId):- Deletes the specified email message from the user’s mailbox.
+        //Note:
+        //If the email is in Trash or Spam, Gmail may delete it permanently.
+        //If it’s in the Inbox, Gmail moves it to Trash by default.
+        gmail.users()
+                .messages()
+                .delete("me", messageId)
+                .execute();
         try {
             //fetch the message again to confirm deletion
             gmail.users().messages().get("me", messageId).execute();
@@ -1115,16 +1155,16 @@ public class GmailService {
     }
 
     //fetching full email body with headers, body and attachments
-    public Map<String,Object>readFullEmailBody(String userEmail,
-                                               String messageId,
-                                               boolean isDraft) throws Exception{
+    public Map<String, Object> readFullEmailBody(String userEmail,
+                                                 String messageId,
+                                                 boolean isDraft) throws Exception {
 
         Gmail gmail = getGmail(userEmail);
         try {
 
             //fetch message or draft based on isDraft flag
             Message message;
-            if (isDraft){
+            if (isDraft) {
                 // Get full draft message
                 Draft draft = gmail.users()
                         .drafts()
@@ -1133,7 +1173,7 @@ public class GmailService {
 
                 message = draft.getMessage();
 
-            }else {
+            } else {
                 message = gmail.users()
                         .messages()
                         .get("me", messageId)
@@ -1151,7 +1191,7 @@ public class GmailService {
             List<Map<String, Object>> attachments = readAttachments(gmail, userEmail, message);
 
             //combine all email details
-            Map<String,Object> emailDetails = new HashMap<>();
+            Map<String, Object> emailDetails = new HashMap<>();
             emailDetails.put("to", headers.getOrDefault("To", ""));
             emailDetails.put("from", headers.getOrDefault("From", ""));
             emailDetails.put("subject", headers.getOrDefault("Subject", ""));
@@ -1187,19 +1227,19 @@ public class GmailService {
     }
 
     // Reads all attachments from an email message.
-    private List<Map<String,Object>> readAttachments(Gmail gmail,
-                                                     String userEmail,
-                                                     Message message) throws Exception{
+    private List<Map<String, Object>> readAttachments(Gmail gmail,
+                                                      String userEmail,
+                                                      Message message) throws Exception {
 
-        List<Map<String,Object>> attachments = new ArrayList<>();
+        List<Map<String, Object>> attachments = new ArrayList<>();
 
         MessagePart payload = message.getPayload();
 
-        if (payload==null || payload.isEmpty()){
+        if (payload == null || payload.isEmpty()) {
             return attachments;
         }
 
-        for (MessagePart part:payload.getParts()){
+        for (MessagePart part : payload.getParts()) {
             // Identify attachments by filename
             if (part.getFilename() != null && !part.getFilename().isEmpty()) {
                 attachments.add(fetchAttachment(gmail, userEmail, message.getId(), part));
@@ -1246,10 +1286,10 @@ public class GmailService {
         fileData.put("mimeType", part.getMimeType());
 //        fileData.put("size", fileBytes.length);
 //        fileData.put("data", fileBytes);
-        String viewUrl = "http://localhost:8080/api/gmail/" + userEmail + "/" + messageId + "/" + attachmentId;
-
+        String viewUrl = "http://localhost:8080/api/gmail/" + userEmail + "/" + messageId + "/" + attachmentId + "/view";
         fileData.put("viewUrl", viewUrl);
-
+        String downloadUrl = "http://localhost:8080/api/gmail/" + userEmail + "/" + messageId + "/" + attachmentId + "/download";
+        fileData.put("downloadUrl", downloadUrl);
 
         return fileData;
     }

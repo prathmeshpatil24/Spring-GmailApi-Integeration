@@ -13,6 +13,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.ByteArrayInputStream;
 import java.net.URLConnection;
+import java.time.LocalDate;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
@@ -246,6 +247,42 @@ public class GmailController {
         }
     }
 
+    //search function endPoint
+    @PostMapping("/search/{userEmail}")
+    public ResponseEntity<?>searchFunction(@PathVariable String userEmail,
+                                           @RequestParam(required = false) String searchQuery,
+                                           @RequestParam(required = false) String from,
+                                           @RequestParam(required = false) String to,
+                                           @RequestParam(required = false) String subject,
+                                           @RequestParam(required = false) LocalDate after,
+                                           @RequestParam(required = false) LocalDate before) throws Exception{
+
+        try {
+            List<Map<String, Object>> searchedData = gmailService.searchFunction(userEmail, searchQuery, from, to, subject, after, before);
+
+            return ResponseEntity.status(HttpStatus.OK).body(Map.of(
+                    "status", HttpStatus.OK,
+                    "data" , searchedData
+            ));
+        }catch (UnauthorizedUserException e) {
+            System.out.println(e.getMessage());
+            //when user is not authorized, generate OAuth url
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
+                    "status", HttpStatus.UNAUTHORIZED,
+                    "message", "User not authorized. Please authorize Gmail access.",
+                    "authorizationUrl", e.getAuthorizationUrl()
+            ));
+
+        } catch (Exception e) {
+            System.out.println(e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of(
+                            "message", e.getMessage(),
+                            "status", HttpStatus.INTERNAL_SERVER_ERROR
+                    ));
+        }
+
+    }
 
     //send mail to single user for sending mail to multi user apply loop in service logic
     @PostMapping("/send/{email}")

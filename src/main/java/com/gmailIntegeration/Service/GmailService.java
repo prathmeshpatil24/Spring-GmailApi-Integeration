@@ -29,7 +29,6 @@ import java.nio.charset.StandardCharsets;
 
 import java.security.GeneralSecurityException;
 
-import java.text.SimpleDateFormat;
 import java.time.LocalDate;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -155,7 +154,6 @@ public class GmailService {
         }
     }
 
-
     //listing emails by label dynamically
     public List<Map<String, Object>> getEmailsByLabel(String userEmail, String label) throws Exception {
         Gmail gmail = getGmail(userEmail);
@@ -199,7 +197,7 @@ public class GmailService {
                                     //header.getValue()  gets the value of the header
                                     emailInfo.put(header.getName(), header.getValue());
                                 }
-                                //Add extra useful details (outside headers)
+                                 //Add extra useful details (outside headers)
                                 emailInfo.put("MessageId", message.getId());
                                 emailInfo.put("ThreadId", message.getThreadId());
 
@@ -226,7 +224,7 @@ public class GmailService {
             // Step 3: Execute all requests in one batch call
             batch.execute();
 
-//            mailSortUtils.sortByDate(emailsList,true); // true = descending (latest first)
+            mailSortUtils.sortByDate(emailsList,true); // true = descending (latest first)
 
             // Step 4: Print summary
             emailsList.forEach(email -> {
@@ -240,7 +238,6 @@ public class GmailService {
             throw new RuntimeException("Failed to fetch emails by label: " + e.getMessage(), e);
         }
     }
-
 
     //listing inbox emails
     public List<Map<String, Object>> getInboxEmailList(String userEmail) throws Exception {
@@ -422,6 +419,8 @@ public class GmailService {
             }
 
             staredEmailList.add(emailInfo);
+
+            mailSortUtils.sortByDate(staredEmailList,true);
             //logging
             for (Map<String, Object> starredEmail : staredEmailList) {
                 System.out.println(starredEmail);
@@ -748,6 +747,8 @@ public class GmailService {
             // Step 3: Execute all requests in one batch call
             batch.execute();
 
+            mailSortUtils.sortByDate(draftMailList,true);
+
             draftMailList.forEach(
                     draftEmail -> {
                         System.out.println(draftEmail);
@@ -838,6 +839,8 @@ public class GmailService {
 
             batch.execute();
 
+            mailSortUtils.sortByDate(spamMailList,true);
+
             //logging
             spamMailList.forEach((spamMails) -> {
                 System.out.println(spamMails);
@@ -911,7 +914,7 @@ public class GmailService {
         }
     }
 
-
+    //search function
     public List<Map<String, Object>> searchFunction(String userEmail,
                                                     String searchQuery,
                                                     String from,
@@ -1003,7 +1006,7 @@ public class GmailService {
             // Step 4: Execute batch
             batch.execute();
 
-
+            mailSortUtils.sortByDate(searchMailResponseList,true);
 
             //logging
             searchMailResponseList.forEach((spamMails) -> {
@@ -1022,7 +1025,6 @@ public class GmailService {
             throw new RuntimeException(e.getMessage());
         }
     }
-
 
     // move to trash
     public String moveEmailToTrash(String userEmail, String messageId) throws Exception {

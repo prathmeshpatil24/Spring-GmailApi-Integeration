@@ -74,24 +74,24 @@ public class GmailService {
     }
 
     //getting total mail count
-    public long getTotalMailCount(String email) throws Exception {
-        Gmail gmail = getGmail(email);
-
-        try {
-            ListLabelsResponse labelsResponse = gmail.users().labels().list("me").execute();
-
-            for (Label label : labelsResponse.getLabels()) {
-                if ("INBOX".equals(label.getName())) {
-                    Label totalMailCount = gmail.users().labels().get("me", label.getId()).execute();
-                    return totalMailCount.getMessagesTotal();
-                }
-            }
-            return 0;
-
-        } catch (Exception e) {
-            throw new RuntimeException(e.getMessage());
-        }
-    }
+//    public long getTotalMailCount(String email) throws Exception {
+//        Gmail gmail = getGmail(email);
+//
+//        try {
+//            ListLabelsResponse labelsResponse = gmail.users().labels().list("me").execute();
+//
+//            for (Label label : labelsResponse.getLabels()) {
+//                if ("INBOX".equals(label.getName())) {
+//                    Label totalMailCount = gmail.users().labels().get("me", label.getId()).execute();
+//                    return totalMailCount.getMessagesTotal();
+//                }
+//            }
+//            return 0;
+//
+//        } catch (Exception e) {
+//            throw new RuntimeException(e.getMessage());
+//        }
+//    }
 
     public Map<String, Object> currentUserProfile(String userEmail) throws Exception {
         Gmail gmail = getGmail(userEmail);
@@ -922,7 +922,9 @@ public class GmailService {
                                                     String subject,
                                                     LocalDate after,
                                                     LocalDate before) throws Exception{
+
         Gmail gmail = getGmail(userEmail);
+
         List<Map<String, Object>> searchMailResponseList = Collections.synchronizedList(new ArrayList<>());
 
         StringBuilder gmailQuery = new StringBuilder();
@@ -946,7 +948,7 @@ public class GmailService {
         if (before != null) {
             gmailQuery.append("before:").append(before.toString().replace("-", "/")).append(" ");
         }
-        System.out.println("🔍 Gmail Search Query: " + gmailQuery);
+        System.out.println(" Gmail Search Query: " + gmailQuery);
 
         try {
             // Step 1: Search messages based on query
@@ -954,6 +956,7 @@ public class GmailService {
                     .messages()
                     .list("me")
                     .setQ(gmailQuery.toString().trim())
+                    .setMaxResults(20L)
                     .execute();
 
             List<Message> messageList = listMessagesResponse.getMessages();
@@ -968,6 +971,7 @@ public class GmailService {
 
             // Step 3: Use BatchRequest to get all message details efficiently
             BatchRequest batch = gmail.batch();
+
 
             for (Message message : messageList) {
                 String messageId = message.getId();
@@ -1009,14 +1013,14 @@ public class GmailService {
             mailSortUtils.sortByDate(searchMailResponseList,true);
 
             //logging
-            searchMailResponseList.forEach((spamMails) -> {
-                spamMails.forEach((key,value)->{
+            searchMailResponseList.forEach((searchMail) -> {
+                searchMail.forEach((key,value)->{
                     System.out.println(key + ":" + value);
                 });
                 System.out.println("-----------------------------");
             });
 
-            System.out.println("Total Spam Emails: " + searchMailResponseList.size());
+            System.out.println("Total search Emails: " + searchMailResponseList.size());
             System.out.println("-----------------------------------");
 
             return searchMailResponseList;

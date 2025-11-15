@@ -49,17 +49,39 @@ public class JpaDataStore extends AbstractDataStore<StoredCredential> {
 
     @Override
     public DataStore<StoredCredential> set(String userEmail, StoredCredential storedCredential) throws IOException {
-        GmailTokenEntity token = repository.findByUserEmail(userEmail).orElse(new GmailTokenEntity());
+
+        // Check if a token row already exists
+        GmailTokenEntity token = repository.findByUserEmail(userEmail)
+                .orElse(new GmailTokenEntity());
+
+        boolean isNew = (token.getUserId() == null);
+
+        System.out.println("[OAuth] Saving token for user: " + userEmail);
+        System.out.println("[OAuth] Token status: " + (isNew ? "NEW token entry" : "Updating existing token"));
+
+        //set field
         System.out.println("Storing token for user: " + userEmail);
         token.setUserEmail(userEmail);
         token.setAccessToken(storedCredential.getAccessToken());
         token.setRefreshToken(storedCredential.getRefreshToken());
         token.setScope("https://www.googleapis.com/auth/gmail.modify");
         token.setTokenType("Bearer");
-        token.setExpiryTime(storedCredential.getExpirationTimeMilliseconds() != null
-                ? Instant.ofEpochMilli(storedCredential.getExpirationTimeMilliseconds())
-                : null);
+
+        if (storedCredential.getExpirationTimeMilliseconds() != null) {
+            token.setExpiryTime(
+                    Instant.ofEpochMilli(storedCredential.getExpirationTimeMilliseconds())
+            );
+        }
+
+        //saved
         repository.save(token);
+
+        System.out.println("[OAuth] Token saved successfully.");
+        if (isNew) {
+            System.out.println("[OAuth] Token created at: " + token.getCreatedAt());
+        }
+        System.out.println("[OAuth] Token updated at: " + token.getUpdatedAt());
+
         return this;
     }
 

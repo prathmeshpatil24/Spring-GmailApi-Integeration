@@ -14,9 +14,9 @@ public class GmailIntegerationApplication {
 
         GmailService gmailService = context.getBean(GmailService.class);
 
-        long totalMailCount = gmailService.getTotalMailCount("patilprathmesh365@gmail.com");
+       // long totalMailCount = gmailService.getTotalMailCount("patilprathmesh365@gmail.com");
 
-        System.out.println("total mails:- " + totalMailCount);
+        //System.out.println("total mails:- " + totalMailCount);
 
 
     }

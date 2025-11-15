@@ -89,7 +89,8 @@ public class GmailConfig1 {
            )
                    .setDataStoreFactory(dataStoreFactory) //token persistence
                    .setAccessType("offline") //requests a refresh token, so your app can access Gmail even when the user is offline.
-                   .setApprovalPrompt("force") //Google will always show the OAuth2 consent screen again for this app, even if the user has previously granted consent for dev/testing purpose.
+                   //.setApprovalPrompt("force") //Google will always show the OAuth2 consent screen again for this app, even if the user has previously granted consent for dev/testing purpose.
+                   .setApprovalPrompt("content") //Forces Google to re-auth ONCE to get a new refresh token
                    .build();
 
            return flow;// return the google authorization code flow
@@ -215,11 +216,29 @@ public class GmailConfig1 {
             GoogleAuthorizationCodeFlow flow = buildFlow();
             Credential loadedCredential = flow.loadCredential(userEmail);
 
-            if (loadedCredential == null || loadedCredential.getAccessToken() == null || loadedCredential.getRefreshToken() == null) {
+            if (loadedCredential == null || loadedCredential.getRefreshToken() == null) {
                 System.out.println("No stored credential found for user: " + userEmail);
                 System.out.println("Oauth url:- " + getAuthorizationUrl());
                 throw new UnauthorizedUserException("No stored credentials found for user: " + userEmail, getAuthorizationUrl());
             }
+
+
+              // Access token might be null → refresh it
+            // Access token might be null or expired → refresh it
+            if (loadedCredential.getAccessToken() == null) {
+
+                System.out.println("[OAuth] Access token is null or expired for user: " + userEmail);
+                System.out.println("[OAuth] Attempting to refresh access token using stored refresh token...");
+
+                boolean refreshed = loadedCredential.refreshToken();
+
+                if (refreshed) {
+                    System.out.println("[OAuth] Access token successfully refreshed for user: " + userEmail);
+                } else {
+                    System.out.println("[OAuth] Failed to refresh access token — refresh token may be invalid!");
+                }
+            }
+
 
             return loadedCredential;
 

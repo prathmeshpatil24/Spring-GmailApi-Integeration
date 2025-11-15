@@ -42,7 +42,9 @@ public class GmailConfig1 {
     private static final List<String> SCOPES = Arrays.asList(
             GmailScopes.GMAIL_READONLY,
             GmailScopes.GMAIL_SEND,
-            GmailScopes.GMAIL_MODIFY
+            GmailScopes.GMAIL_MODIFY,
+            GmailScopes.MAIL_GOOGLE_COM
+
     );
 
     private final GmailTokenRepository repository;
@@ -224,7 +226,7 @@ public class GmailConfig1 {
 
 
               // Access token might be null → refresh it
-            // Access token might be null or expired → refresh it
+
             if (loadedCredential.getAccessToken() == null) {
 
                 System.out.println("[OAuth] Access token is null or expired for user: " + userEmail);
